@@ -24,10 +24,11 @@ st.markdown("""
 <style>
 :root { --blue:#1D4ED8; --red:#ef4444; }
 .block-container { padding-top: 28px; max-width: 1320px; }
+h1.title { font-size: 1.8rem; font-weight: 800; margin-bottom: 20px; }
 .pill { width: 100%; border-radius: 10px; padding: 8px; font-weight: 700;
-        border: 2px solid var(--blue); background: var(--blue); color: white;
+        border: 2px solid var(--blue); background-color: var(--blue); color: white;
         text-align: center; cursor: pointer; }
-.pill.done { background: white; color: var(--blue); }
+.pill.done { background-color: white; color: var(--blue); }
 .pill.rej.done { border-color: var(--red); color: var(--red); }
 </style>
 """, unsafe_allow_html=True)
@@ -84,6 +85,9 @@ def delete_row(row_id):
 # --- Init ---
 init_db()
 
+# --- Title ---
+st.markdown("<h1 class='title'>Fund Review Tracker</h1>", unsafe_allow_html=True)
+
 # --- UI: Add fund ---
 name = st.text_input("Fund Name")
 assigned = st.date_input("Assigned Date", value=datetime.today())
@@ -99,13 +103,14 @@ if df.empty:
 df["assigned_date"] = pd.to_datetime(df["assigned_date"], errors="coerce").dt.date
 df = df.sort_values(by="assigned_date")
 
-# --- Table ---
+# --- Table Header ---
 cols = st.columns([3, 1.5] + [1]*len(STEPS) + [0.7])
 cols[0].write("Fund")
 cols[1].write("Assigned")
 for i, (_, label) in enumerate(STEPS):
     cols[2+i].write(label)
 
+# --- Table Rows ---
 for _, row in df.iterrows():
     rid = int(row["id"])
     c = st.columns([3, 1.5] + [1]*len(STEPS) + [0.7])
