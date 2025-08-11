@@ -25,7 +25,9 @@ st.markdown("""
 :root { --blue:#1D4ED8; --red:#ef4444; }
 .block-container { padding-top: 28px; max-width: 1320px; }
 h1.title { font-size: 1.8rem; font-weight: 800; margin-bottom: 20px; }
-.pill {
+
+/* Target Streamlit buttons */
+div.pill-wrapper > button {
     width: 100%;
     border-radius: 10px;
     padding: 8px;
@@ -36,11 +38,15 @@ h1.title { font-size: 1.8rem; font-weight: 800; margin-bottom: 20px; }
     text-align: center;
     cursor: pointer;
 }
-.pill.done {
+
+/* Completed pills */
+div.pill-wrapper.done > button {
     background-color: white !important;
     color: var(--blue) !important;
 }
-.pill.rej.done {
+
+/* Rejected pills */
+div.pill-wrapper.rej.done > button {
     border-color: var(--red) !important;
     color: var(--red) !important;
 }
@@ -99,6 +105,13 @@ def delete_row(row_id):
 # --- Init ---
 init_db()
 
+# --- API handling for AJAX toggle ---
+params = st.query_params
+if "toggle" in params:
+    row_id, colname = params["toggle"].split("_", 1)
+    toggle_step(int(row_id), colname)
+    st.stop()
+
 # --- Title ---
 st.markdown("<h1 class='title'>Fund Review Tracker</h1>", unsafe_allow_html=True)
 
@@ -135,12 +148,31 @@ for _, row in df.iterrows():
         done = bool(row[colname])
         date_val = row.get(colname + "_date")
         pill_text = FMT(date_val) if done and date_val else label
-        pill_class = "pill" + (" done" if done else "")
-        if colname == "step7_rej": pill_class += " rej"
+        wrapper_class = "pill-wrapper" + (" done" if done else "")
+        if colname == "step7_rej":
+            wrapper_class += " rej"
 
-        if c[2+idx_s].button(pill_text, key=f"{rid}_{colname}"):
-            toggle_step(rid, colname)
-            st.rerun()
+        with c[2+idx_s]:
+            st.markdown(
+                f"""
+                <div class="{wrapper_class}">
+                    <button onclick="
+                        this.parentElement.classList.toggle('done');
+                        if(this.innerText === '{label}'){{
+                            const today = new Date();
+                            const options = {{ month: 'short', day: '2-digit' }};
+                            this.innerText = today.toLocaleDateString('en-US', options);
+                        }} else {{
+                            this.innerText = '{label}';
+                        }}
+                        fetch('?toggle={rid}_{colname}');
+                    ">
+                        {pill_text}
+                    </button>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
     if row["step7_rej"]:
         if c[-1].button("🗑", key=f"del_{rid}"):
