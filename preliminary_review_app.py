@@ -25,11 +25,25 @@ st.markdown("""
 :root { --blue:#1D4ED8; --red:#ef4444; }
 .block-container { padding-top: 28px; max-width: 1320px; }
 h1.title { font-size: 1.8rem; font-weight: 800; margin-bottom: 20px; }
-.pill { width: 100%; border-radius: 10px; padding: 8px; font-weight: 700;
-        border: 2px solid var(--blue); background-color: var(--blue); color: white;
-        text-align: center; cursor: pointer; }
-.pill.done { background-color: white; color: var(--blue); }
-.pill.rej.done { border-color: var(--red); color: var(--red); }
+.pill {
+    width: 100%;
+    border-radius: 10px;
+    padding: 8px;
+    font-weight: 700;
+    border: 2px solid var(--blue);
+    background-color: var(--blue) !important;
+    color: white !important;
+    text-align: center;
+    cursor: pointer;
+}
+.pill.done {
+    background-color: white !important;
+    color: var(--blue) !important;
+}
+.pill.rej.done {
+    border-color: var(--red) !important;
+    color: var(--red) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
