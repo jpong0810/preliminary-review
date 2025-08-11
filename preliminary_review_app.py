@@ -28,6 +28,8 @@ st.markdown("""
 }
 html, body { background: var(--bg) !important; }
 .block-container { padding-top: 28px; max-width: 1320px; }
+
+/* Cards */
 .card {
   background: var(--card);
   border: 1px solid var(--line);
@@ -50,8 +52,24 @@ html, body { background: var(--bg) !important; }
   padding: 10px 12px; font-weight: 700;
 }
 
-/* Pills */
-.html-pill {
+/* Add row */
+.add-row-grid {
+  display: grid;
+  grid-template-columns: 2fr 1.3fr 0.9fr;
+  gap: 10px;
+  align-items: center;
+}
+.add-btn > button {
+  background: #111827;
+  border: 1px solid #0b1220;
+  color: #fff;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 8px 14px;
+}
+
+/* Pills as true HTML links/buttons (so Streamlit can't override styles) */
+a.html-pill, button.html-pill, .html-pill {
   display: block;
   width: 100%;
   border-radius: 10px;
@@ -59,25 +77,17 @@ html, body { background: var(--bg) !important; }
   font-weight: 700;
   border: 2px solid var(--blue);
   background: var(--blue);
-  color: #ffffff;
+  color: #ffffff !important;
   text-align: center;
-  text-decoration: none;
+  text-decoration: none !important;
 }
-.html-pill.done {
+a.html-pill.done, .html-pill.done {
   background: #ffffff;
-  color: var(--blue);
+  color: var(--blue) !important;
 }
-.html-pill.rej.done {
+a.html-pill.rej.done, .html-pill.rej.done {
   border-color: var(--red);
-  color: var(--red);
-}
-.pill-caption {
-  margin-top: 4px;
-  font-size: 0.75rem;
-  line-height: 1;
-  text-align: center;
-  color: #111827;
-  opacity: .75;
+  color: var(--red) !important;
 }
 
 /* Delete button */
@@ -136,37 +146,61 @@ def set_field(row_id:int, field:str, value):
     with conn() as c:
         c.execute(f"UPDATE funds SET {field}=? WHERE id=?", (value, row_id)); c.commit()
 
+def get_flag(row_id:int, colname:str) -> int:
+    with conn() as c:
+        val = c.execute(f"SELECT {colname} FROM funds WHERE id=?", (row_id,)).fetchone()
+        return int(val[0]) if val and val[0] is not None else 0
+
 def delete_row(row_id:int):
     with conn() as c:
         c.execute("DELETE FROM funds WHERE id=?", (row_id,)); c.commit()
 
 # Toggle helper
-def toggle_step(row, colname):
-    done = int(row[colname])
+def apply_toggle(row_id:int, colname:str):
+    done = get_flag(row_id, colname)
     date_col = colname + "_date"
     if done:
-        set_field(row["id"], colname, 0)
-        set_field(row["id"], date_col, None)
+        set_field(row_id, colname, 0)
+        set_field(row_id, date_col, None)
     else:
-        set_field(row["id"], colname, 1)
-        set_field(row["id"], date_col, TODAY_ISO())
-    rerun()
+        set_field(row_id, colname, 1)
+        set_field(row_id, date_col, TODAY_ISO())
+
+# ------------- Handle pill clicks via query param (early) -------------
+init_db()
+params = st.query_params  # new API (Streamlit >=1.30)
+toggle_param = params.get("toggle")
+if toggle_param:
+    try:
+        rid_str, colname = toggle_param.split("_", 1)
+        rid = int(rid_str)
+        # Flip state in DB
+        apply_toggle(rid, colname)
+    except Exception:
+        pass
+    # Clear the param so it doesn't re-trigger on next run
+    try:
+        # New API
+        st.query_params.clear()
+    except Exception:
+        # Fallback to experimental API
+        st.experimental_set_query_params()
 
 # ---------------- App ----------------
-init_db()
 
 # Title
 st.markdown('<div class="card"><div class="h1">FUND REVIEW TRACKER</div></div>', unsafe_allow_html=True)
 
-# Add row
-st.markdown('<div class="card">', unsafe_allow_html=True)
+# Add row (inline)
+st.markdown('<div class="card add-row-grid">', unsafe_allow_html=True)
 c1, c2, c3 = st.columns([2, 1.3, 0.9], gap="small")
 name = c1.text_input("Fund Name", placeholder="e.g., Alpha Fund IV", label_visibility="collapsed")
 assigned = c2.date_input("Assigned Date", value=pd.to_datetime("today"))
 with c3:
+    st.markdown('<div class="add-btn">', unsafe_allow_html=True)
     if st.button("Add", use_container_width=True, type="primary", disabled=not name.strip()):
-        add_fund(name, assigned.strftime("%Y-%m-%d"))
-        st.success("Fund added."); rerun()
+        add_fund(name, assigned.strftime("%Y-%m-%d")); rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Load & sort oldest first
@@ -207,21 +241,21 @@ for _, row in df.iterrows():
     if str(new_date) != str(row["assigned_date"]):
         set_field(rid, "assigned_date", str(new_date)); rerun()
 
-    # Step pills (HTML for style, hidden form button for click)
+    # Step pills (true HTML links that toggle via query param)
     for idx_s, (colname, label) in enumerate(STEPS):
         done = bool(row[colname])
         stored = row.get(colname + "_date")
         pill_text = FMT(stored) if (done and stored) else label
 
-        css_class = "html-pill"
-        if done: css_class += " done"
-        if colname == "step7_rej": css_class += " rej"
+        classes = "html-pill"
+        if done:
+            classes += " done"
+        if colname == "step7_rej":
+            classes += " rej"
 
-        with grid[2 + idx_s]:
-            with st.form(key=f"form_{rid}_{colname}", clear_on_submit=True):
-                st.markdown(f"<div class='{css_class}'>{pill_text}</div>", unsafe_allow_html=True)
-                st.form_submit_button(label="", on_click=lambda r=row, c=colname: toggle_step(r, c))
-            st.markdown(f"<div class='pill-caption'>{label}</div>", unsafe_allow_html=True)
+        href = f"?toggle={rid}_{colname}"
+        # Render as <a> so the styles are guaranteed and click changes URL param (no Streamlit button theme)
+        grid[2 + idx_s].markdown(f"<a href='{href}' class='{classes}'>{pill_text}</a>", unsafe_allow_html=True)
 
     # Delete (only when rejected)
     with grid[-1]:
