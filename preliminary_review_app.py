@@ -25,7 +25,6 @@ st.markdown("""
 :root{
   --bg:#f4f6fb; --card:#ffffff; --ink:#0f172a; --muted:#6b7280; --line:#e7e8ef;
   --pri:#2563eb; --pri-soft:#ecf2ff; --danger:#ef4444;
-  --done-bg:#e8f1ff; --done-border:#cddfff; --rej-bg:#fff1f2; --rej-border:#fecdd3;
 }
 html, body { background: var(--bg) !important; }
 .block-container { padding-top: 26px; max-width: 1320px; }
@@ -62,28 +61,6 @@ html, body { background: var(--bg) !important; }
   padding: 10px 12px;
 }
 .row-grid + .row-grid { margin-top: 8px; }
-
-.pill {
-  width: 100%;
-  border-radius: 10px;
-  padding: 6px;
-  font-weight: 700;
-  border: 1px solid var(--line);
-  background: #ffffff;
-  color: #111827;
-}
-.pill:hover { background: var(--pri-soft); border-color: #d7e2ff; }
-.pill-done {
-  background: var(--done-bg);
-  border-color: var(--done-border);
-  color: #1e40af;
-}
-.pill-rej {
-  background: var(--rej-bg);
-  border-color: var(--rej-border);
-  color: #881337;
-  font-size: 0.85rem;
-}
 
 .trash > button {
   width: 100%;
@@ -177,7 +154,7 @@ init_db()
 # Title
 st.markdown(
     '<div class="card"><div class="h1">FUND REVIEW TRACKER</div>'
-    '<div class="subtle">Click a pill to mark done (or click again to undo). Sorted by Assigned Date (oldest first).</div></div>',
+    '<div class="subtle">Blue = to-do, White = done. Sorted by Assigned Date (oldest first).</div></div>',
     unsafe_allow_html=True
 )
 
@@ -222,7 +199,7 @@ for _, row in df.iterrows():
     if new_name != row["fund_name"]:
         set_field(rid, "fund_name", new_name.strip()); rerun()
 
-    # Assigned date — always editable in place
+    # Assigned date — editable in place
     new_date = grid[1].date_input(
         label=" ",
         value=row["assigned_date"] if row["assigned_date"] else datetime.today().date(),
@@ -233,12 +210,39 @@ for _, row in df.iterrows():
         set_field(rid, "assigned_date", str(new_date))
         rerun()
 
-    # Step pills
+    # Step pills (blue → white toggle)
     for idx_s, (colname, label) in enumerate(STEPS):
         done = bool(row[colname])
         stored = row.get(colname + "_date")
         text = FMT(stored) if (done and stored) else label
-        css = "pill-rej" if (colname == "step7_rej" and done) else ("pill-done" if done else "pill")
+
+        if done:
+            bg_color = "#ffffff"
+            border_color = "#2563eb"
+            text_color = "#2563eb"
+        else:
+            bg_color = "#2563eb"
+            border_color = "#2563eb"
+            text_color = "#ffffff"
+
+        if colname == "step7_rej" and done:
+            bg_color = "#ffffff"
+            border_color = "#ef4444"
+            text_color = "#ef4444"
+
+        pill_html = f"""
+            <button style="
+                width:100%;
+                border-radius:10px;
+                border: 2px solid {border_color};
+                padding:6px;
+                font-weight:700;
+                background:{bg_color};
+                color:{text_color};
+            ">
+                {text}
+            </button>
+        """
         with grid[2 + idx_s]:
             if st.button(text, key=f"{colname}_{rid}", use_container_width=True):
                 toggle_step({"id": rid, colname: int(done)}, colname)
