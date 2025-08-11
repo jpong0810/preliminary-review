@@ -159,7 +159,7 @@ def delete_row(row_id:int):
     with conn() as c:
         c.execute("DELETE FROM funds WHERE id=?", (row_id,)); c.commit()
 
-# Toggle helper: click to set done or undo
+# Toggle helper
 def toggle_step(row, colname):
     done = int(row[colname])
     date_col = colname + "_date"
@@ -177,15 +177,8 @@ init_db()
 # Title
 st.markdown(
     '<div class="card"><div class="h1">FUND REVIEW TRACKER</div>'
-    '<div class="subtle">Click a pill to mark done (or click again to undo). Sort funds by Assigned Date.</div></div>',
+    '<div class="subtle">Click a pill to mark done (or click again to undo). Sorted by Assigned Date (oldest first).</div></div>',
     unsafe_allow_html=True
-)
-
-# Sort control
-sort_order = st.radio(
-    "Sort by Assigned Date",
-    options=["Newest first", "Oldest first"],
-    horizontal=True
 )
 
 # Add row
@@ -200,16 +193,13 @@ with c3:
     st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Load + sort
+# Load & sort oldest first
 df = load_df()
 if df.empty:
     st.info("No funds yet. Add your first fund above."); st.stop()
 
 df["assigned_date"] = pd.to_datetime(df["assigned_date"], errors="coerce").dt.date
-if sort_order == "Newest first":
-    df = df.sort_values(by="assigned_date", ascending=False)
-else:
-    df = df.sort_values(by="assigned_date", ascending=True)
+df = df.sort_values(by="assigned_date", ascending=True)
 
 for col, _ in STEPS:
     df[col] = df[col].astype(bool)
@@ -232,18 +222,16 @@ for _, row in df.iterrows():
     if new_name != row["fund_name"]:
         set_field(rid, "fund_name", new_name.strip()); rerun()
 
-    # Assigned date — always editable, styled like pill
-    with grid[1]:
-        st.markdown(f"<div class='pill'>{''}</div>", unsafe_allow_html=True)
-        new_date = st.date_input(
-            label=" ",
-            value=row["assigned_date"] if row["assigned_date"] else datetime.today().date(),
-            label_visibility="collapsed",
-            key=f"ass_picker_{rid}"
-        )
-        if str(new_date) != str(row["assigned_date"]):
-            set_field(rid, "assigned_date", str(new_date))
-            rerun()
+    # Assigned date — always editable in place
+    new_date = grid[1].date_input(
+        label=" ",
+        value=row["assigned_date"] if row["assigned_date"] else datetime.today().date(),
+        label_visibility="collapsed",
+        key=f"ass_picker_{rid}"
+    )
+    if str(new_date) != str(row["assigned_date"]):
+        set_field(rid, "assigned_date", str(new_date))
+        rerun()
 
     # Step pills
     for idx_s, (colname, label) in enumerate(STEPS):
