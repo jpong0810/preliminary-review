@@ -24,11 +24,11 @@ st.markdown("""
 <style>
 :root{
   --bg:#f4f6fb; --card:#ffffff; --ink:#0f172a; --muted:#6b7280; --line:#e7e8ef;
-  --pri:#2563eb; --pri-soft:#ecf2ff; --ok:#16a34a; --warn:#f59e0b; --danger:#ef4444;
+  --pri:#2563eb; --pri-soft:#ecf2ff; --danger:#ef4444;
   --done-bg:#e8f1ff; --done-border:#cddfff; --rej-bg:#fff1f2; --rej-border:#fecdd3;
 }
 html, body { background: var(--bg) !important; }
-.block-container { padding-top: 26px; max-width: 1320px; }  /* extra top space */
+.block-container { padding-top: 26px; max-width: 1320px; }
 
 .card {
   background: var(--card);
@@ -44,7 +44,7 @@ html, body { background: var(--bg) !important; }
 
 .header-grid, .row-grid {
   display: grid;
-  grid-template-columns: 0.9fr 3fr 1.4fr repeat(6, 1.05fr) 0.9fr;
+  grid-template-columns: 3fr 1.4fr repeat(6, 1.05fr) 0.9fr;
   gap: 10px;
   align-items: center;
 }
@@ -65,16 +65,6 @@ html, body { background: var(--bg) !important; }
 .row-grid + .row-grid { margin-top: 8px; }
 .row-grid:hover { background: #fbfbfe; }
 
-.badge {
-  display: inline-block;
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: #f3f4f6;
-  color: #111827;
-  font-weight: 700;
-}
-
 .pill {
   width: 100%;
   border-radius: 10px;
@@ -94,17 +84,8 @@ html, body { background: var(--bg) !important; }
   background: var(--rej-bg);
   border-color: var(--rej-border);
   color: #881337;
+  font-size: 0.85rem;
 }
-
-.icon-btn > button {
-  width: 100%;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: #ffffff;
-  font-weight: 700;
-  padding: 6px 0;
-}
-.icon-btn > button:hover { background: #f7f9ff; }
 
 .trash > button {
   width: 100%;
@@ -118,7 +99,7 @@ html, body { background: var(--bg) !important; }
 
 .add-row-grid {
   display: grid;
-  grid-template-columns: 3fr 1.4fr 0.9fr;
+  grid-template-columns: 2fr 1.3fr 0.9fr;
   gap: 10px;
   align-items: center;
 }
@@ -146,7 +127,6 @@ def init_db():
         c.execute("""
             CREATE TABLE IF NOT EXISTS funds (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ord INTEGER DEFAULT 1000,
                 fund_name TEXT NOT NULL,
                 assigned_date TEXT NOT NULL,
                 step2_info  INTEGER DEFAULT 0,
@@ -166,40 +146,29 @@ def init_db():
 
 def add_fund(name:str, assigned:str):
     with conn() as c:
-        max_ord = c.execute("SELECT COALESCE(MAX(ord),0) FROM funds").fetchone()[0] or 0
-        c.execute("INSERT INTO funds (ord, fund_name, assigned_date) VALUES (?,?,?)",
-                  (max_ord + 10, name.strip(), assigned)); c.commit()
+        c.execute("INSERT INTO funds (fund_name, assigned_date) VALUES (?,?)", (name.strip(), assigned))
+        c.commit()
 
 def load_df():
     with conn() as c:
-        return pd.read_sql_query("SELECT * FROM funds ORDER BY ord, id", c)
+        return pd.read_sql_query("SELECT * FROM funds", c)
 
 def set_field(row_id:int, field:str, value):
     with conn() as c:
         c.execute(f"UPDATE funds SET {field}=? WHERE id=?", (value, row_id)); c.commit()
 
-def swap_order(id_a:int, id_b:int):
-    with conn() as c:
-        a = c.execute("SELECT ord FROM funds WHERE id=?", (id_a,)).fetchone()[0]
-        b = c.execute("SELECT ord FROM funds WHERE id=?", (id_b,)).fetchone()[0]
-        c.execute("UPDATE funds SET ord=? WHERE id=?", (b, id_a))
-        c.execute("UPDATE funds SET ord=? WHERE id=?", (a, id_b))
-        c.commit()
-
 def delete_row(row_id:int):
     with conn() as c:
         c.execute("DELETE FROM funds WHERE id=?", (row_id,)); c.commit()
 
-# Toggle helper: click to set done (stamp today) OR undo (clear flag & date)
+# Toggle helper: click to set done or undo
 def toggle_step(row, colname):
     done = int(row[colname])
     date_col = colname + "_date"
     if done:
-        # undo
         set_field(row["id"], colname, 0)
         set_field(row["id"], date_col, None)
     else:
-        # do + stamp
         set_field(row["id"], colname, 1)
         set_field(row["id"], date_col, TODAY_ISO())
     rerun()
@@ -210,75 +179,65 @@ init_db()
 # Title
 st.markdown(
     '<div class="card"><div class="h1">FUND REVIEW TRACKER</div>'
-    '<div class="subtle">Colorful pills for each step. Click to mark done (or click again to undo). '
-    'Dates show inside the pill as <b>MMM-DD</b>. Use ▲/▼ to reorder rows.</div></div>',
+    '<div class="subtle">Click a pill to mark done (or click again to undo). Sort funds by Assigned Date.</div></div>',
     unsafe_allow_html=True
 )
 
-# Add row (no dropdown)
-with st.container():
-    st.markdown('<div class="card add-row-grid">', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([3,1.4,0.9], gap="small")
-    name = c1.text_input("Fund Name", placeholder="e.g., Alpha Fund IV", label_visibility="collapsed")
-    assigned = c2.date_input("Assigned Date", value=pd.to_datetime("today"))
-    with c3:
-        st.markdown('<div class="add-btn">', unsafe_allow_html=True)
-        if st.button("Add", use_container_width=True, type="primary", disabled=not name.strip()):
-            add_fund(name, assigned.strftime("%Y-%m-%d")); st.success("Fund added."); rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+# Sort control
+sort_order = st.radio(
+    "Sort by Assigned Date",
+    options=["Newest first", "Oldest first"],
+    horizontal=True
+)
 
-# Load + types
+# Add row
+st.markdown('<div class="card add-row-grid">', unsafe_allow_html=True)
+c1, c2, c3 = st.columns([2, 1.3, 0.9], gap="small")
+name = c1.text_input("Fund Name", placeholder="e.g., Alpha Fund IV", label_visibility="collapsed")
+assigned = c2.date_input("Assigned Date", value=pd.to_datetime("today"))
+with c3:
+    st.markdown('<div class="add-btn">', unsafe_allow_html=True)
+    if st.button("Add", use_container_width=True, type="primary", disabled=not name.strip()):
+        add_fund(name, assigned.strftime("%Y-%m-%d")); st.success("Fund added."); rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# Load + sort
 df = load_df()
 if df.empty:
     st.info("No funds yet. Add your first fund above."); st.stop()
 
 df["assigned_date"] = pd.to_datetime(df["assigned_date"], errors="coerce").dt.date
+if sort_order == "Newest first":
+    df = df.sort_values(by="assigned_date", ascending=False)
+else:
+    df = df.sort_values(by="assigned_date", ascending=True)
+
 for col, _ in STEPS:
-    if col in df.columns:
-        df[col] = df[col].astype(bool)
+    df[col] = df[col].astype(bool)
 
 # Header
 st.markdown(
-    '<div class="header-grid">'
-    '<div></div><div>Fund</div><div>Assigned</div>'
-    + ''.join([f'<div>{label}</div>' for _, label in STEPS])
-    + '<div></div></div>',
+    '<div class="header-grid"><div>Fund</div><div>Assigned</div>' +
+    ''.join([f'<div>{label}</div>' for _, label in STEPS]) +
+    '<div></div></div>',
     unsafe_allow_html=True
 )
 
 # Rows
-for i, row in df.reset_index(drop=True).iterrows():
+for _, row in df.iterrows():
     rid = int(row["id"])
-    # Determine neighbors for reordering
-    prev_id = int(df.iloc[i-1]["id"]) if i > 0 else None
-    next_id = int(df.iloc[i+1]["id"]) if i < len(df)-1 else None
+    grid = st.columns([3, 1.4] + [1.05]*len(STEPS) + [0.9], gap="small")
 
-    grid = st.columns([0.9, 3, 1.4] + [1.05]*len(STEPS) + [0.9], gap="small")
-
-    # Reorder arrows
-    with grid[0]:
-        st.markdown('<div class="icon-btn">', unsafe_allow_html=True)
-        up = st.button("▲", key=f"up_{rid}", use_container_width=True, disabled=(prev_id is None))
-        down = st.button("▼", key=f"down_{rid}", use_container_width=True, disabled=(next_id is None))
-        st.markdown('</div>', unsafe_allow_html=True)
-        if up and prev_id is not None:
-            swap_order(rid, prev_id)
-            rerun()
-        if down and next_id is not None:
-            swap_order(rid, next_id)
-            rerun()
-
-    # Fund name (inline edit)
-    new_name = grid[1].text_input("fund", value=row["fund_name"], label_visibility="collapsed", key=f"name_{rid}")
+    # Fund name
+    new_name = grid[0].text_input("fund", value=row["fund_name"], label_visibility="collapsed", key=f"name_{rid}")
     if new_name != row["fund_name"]:
         set_field(rid, "fund_name", new_name.strip()); rerun()
 
-    # Assigned pill — click to open a compact date picker inline
-    with grid[2]:
+    # Assigned pill
+    with grid[1]:
         label = FMT(row["assigned_date"])
         if st.button(f"Assigned: {label}", key=f"assignpill_{rid}", use_container_width=True):
-            # reveal inline date input for this row
             new_date = st.date_input(" ", value=row["assigned_date"], label_visibility="collapsed", key=f"ass_picker_{rid}")
             if str(new_date) != str(row["assigned_date"]):
                 set_field(rid, "assigned_date", str(new_date)); rerun()
@@ -289,7 +248,7 @@ for i, row in df.reset_index(drop=True).iterrows():
         stored = row.get(colname + "_date")
         text = FMT(stored) if (done and stored) else label
         css = "pill-rej" if (colname == "step7_rej" and done) else ("pill-done" if done else "pill")
-        with grid[3 + idx_s]:
+        with grid[2 + idx_s]:
             if st.button(text, key=f"{colname}_{rid}", use_container_width=True):
                 toggle_step({"id": rid, colname: int(done)}, colname)
 
