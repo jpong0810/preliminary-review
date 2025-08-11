@@ -24,10 +24,10 @@ st.markdown("""
 <style>
 :root{
   --bg:#f4f6fb; --card:#ffffff; --ink:#0f172a; --muted:#6b7280; --line:#e7e8ef;
-  --pri:#2563eb; --pri-soft:#ecf2ff; --danger:#ef4444;
+  --blue:#2563eb; --blueSoft:#ecf2ff; --red:#ef4444;
 }
 html, body { background: var(--bg) !important; }
-.block-container { padding-top: 26px; max-width: 1320px; }
+.block-container { padding-top: 28px; max-width: 1320px; }
 
 .card {
   background: var(--card);
@@ -41,6 +41,7 @@ html, body { background: var(--bg) !important; }
 .h1 { font-size: 1.6rem; font-weight: 800; margin: 0; }
 .subtle { color: var(--muted); font-size: .92rem; }
 
+/* Grid */
 .header-grid, .row-grid {
   display: grid;
   grid-template-columns: 3fr 1.4fr repeat(6, 1.05fr) 0.9fr;
@@ -62,16 +63,7 @@ html, body { background: var(--bg) !important; }
 }
 .row-grid + .row-grid { margin-top: 8px; }
 
-.trash > button {
-  width: 100%;
-  border-radius: 10px;
-  border: 1px solid var(--danger);
-  color: var(--danger);
-  background: #fff5f5;
-  font-weight: 700;
-  padding: 6px 0;
-}
-
+/* Add row */
 .add-row-grid {
   display: grid;
   grid-template-columns: 2fr 1.3fr 0.9fr;
@@ -86,6 +78,42 @@ html, body { background: var(--bg) !important; }
   border-radius: 10px;
   padding: 8px 14px;
 }
+
+/* Pill buttons: default BLUE, done = WHITE with blue border; rejected done = WHITE with red border */
+.pill-wrap > button {
+  width: 100%;
+  border-radius: 10px;
+  padding: 6px;
+  font-weight: 700;
+  border: 2px solid var(--blue);
+  background: var(--blue);
+  color: #ffffff;
+}
+.pill-wrap.done > button {
+  background: #ffffff;
+  color: var(--blue);
+  border-color: var(--blue);
+}
+.pill-wrap.rej.done > button {
+  background: #ffffff;
+  color: var(--red);
+  border-color: var(--red);
+}
+.pill-wrap > button:hover { filter: brightness(0.97); }
+
+/* Delete button */
+.trash > button {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--red);
+  color: var(--red);
+  background: #fff5f5;
+  font-weight: 700;
+  padding: 6px 0;
+}
+
+/* Tighter button text so 'Rejected' doesn’t wrap */
+.pill-wrap > button { font-size: 0.92rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -153,8 +181,7 @@ init_db()
 
 # Title
 st.markdown(
-    '<div class="card"><div class="h1">FUND REVIEW TRACKER</div>'
-    '<div class="subtle">Blue = to-do, White = done. Sorted by Assigned Date (oldest first).</div></div>',
+    '<div class="card"><div class="h1">FUND REVIEW TRACKER</div></div>',
     unsafe_allow_html=True
 )
 
@@ -170,14 +197,13 @@ with c3:
     st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Load & sort oldest first
+# Load & sort oldest first (default)
 df = load_df()
 if df.empty:
     st.info("No funds yet. Add your first fund above."); st.stop()
 
 df["assigned_date"] = pd.to_datetime(df["assigned_date"], errors="coerce").dt.date
 df = df.sort_values(by="assigned_date", ascending=True)
-
 for col, _ in STEPS:
     df[col] = df[col].astype(bool)
 
@@ -194,7 +220,7 @@ for _, row in df.iterrows():
     rid = int(row["id"])
     grid = st.columns([3, 1.4] + [1.05]*len(STEPS) + [0.9], gap="small")
 
-    # Fund name
+    # Fund name (inline editable)
     new_name = grid[0].text_input("fund", value=row["fund_name"], label_visibility="collapsed", key=f"name_{rid}")
     if new_name != row["fund_name"]:
         set_field(rid, "fund_name", new_name.strip()); rerun()
@@ -207,44 +233,23 @@ for _, row in df.iterrows():
         key=f"ass_picker_{rid}"
     )
     if str(new_date) != str(row["assigned_date"]):
-        set_field(rid, "assigned_date", str(new_date))
-        rerun()
+        set_field(rid, "assigned_date", str(new_date)); rerun()
 
-    # Step pills (blue → white toggle)
+    # Step pills (BLUE default → WHITE when done; rejected = WHITE/RED when done)
     for idx_s, (colname, label) in enumerate(STEPS):
         done = bool(row[colname])
         stored = row.get(colname + "_date")
         text = FMT(stored) if (done and stored) else label
 
-        if done:
-            bg_color = "#ffffff"
-            border_color = "#2563eb"
-            text_color = "#2563eb"
-        else:
-            bg_color = "#2563eb"
-            border_color = "#2563eb"
-            text_color = "#ffffff"
+        wrap_classes = "pill-wrap"
+        if done: wrap_classes += " done"
+        if colname == "step7_rej": wrap_classes += " rej"
 
-        if colname == "step7_rej" and done:
-            bg_color = "#ffffff"
-            border_color = "#ef4444"
-            text_color = "#ef4444"
-
-        pill_html = f"""
-            <button style="
-                width:100%;
-                border-radius:10px;
-                border: 2px solid {border_color};
-                padding:6px;
-                font-weight:700;
-                background:{bg_color};
-                color:{text_color};
-            ">
-                {text}
-            </button>
-        """
         with grid[2 + idx_s]:
-            if st.button(text, key=f"{colname}_{rid}", use_container_width=True):
+            st.markdown(f'<div class="{wrap_classes}">', unsafe_allow_html=True)
+            clicked = st.button(text, key=f"{colname}_{rid}", use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+            if clicked:
                 toggle_step({"id": rid, colname: int(done)}, colname)
 
     # Delete (only when rejected)
