@@ -3,10 +3,10 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 
-# ---------- Config ----------
+# ---------------- Config ----------------
 DB_FILE = "fund_checklist.db"
-TODAY_STR = lambda: datetime.today().strftime("%Y-%m-%d")
-FMT = lambda s: (pd.to_datetime(s).strftime("%b-%d") if pd.notna(pd.to_datetime(s, errors="coerce")) else "—")
+TODAY_ISO = lambda: datetime.today().strftime("%Y-%m-%d")
+FMT = lambda s: (pd.to_datetime(s, errors="coerce").strftime("%b-%d") if pd.to_datetime(s, errors="coerce") is not pd.NaT else "—")
 
 STEPS = [
     ("step2_info",  "Info Request"),
@@ -17,50 +17,136 @@ STEPS = [
     ("step7_rej",   "Rejected"),
 ]
 
-# ---------- Streamlit setup ----------
 st.set_page_config(page_title="Fund Review Tracker", layout="wide")
 
-# Polished UI
+# ---------------- Style ----------------
 st.markdown("""
 <style>
 :root{
-  --bg:#f6f7fb; --card:#fff; --ink:#0f172a; --muted:#6b7280; --line:#e7e8ef;
-  --primary:#3b82f6; --ok:#10b981; --warn:#f59e0b; --danger:#ef4444;
+  --bg:#f4f6fb; --card:#ffffff; --ink:#0f172a; --muted:#6b7280; --line:#e7e8ef;
+  --pri:#2563eb; --pri-soft:#ecf2ff; --ok:#16a34a; --warn:#f59e0b; --danger:#ef4444;
+  --done-bg:#e8f1ff; --done-border:#cddfff; --rej-bg:#fff1f2; --rej-border:#fecdd3;
 }
 html, body { background: var(--bg) !important; }
-.block-container { padding-top: 10px; max-width: 1280px; }
-.card { background: var(--card); border:1px solid var(--line); border-radius:16px;
-  padding: 18px 20px; box-shadow: 0 6px 18px rgba(15,23,42,.05); }
-.header-row, .data-row {
-  display:grid; grid-template-columns: 3fr 1.2fr repeat(6, 1fr) .9fr; gap:10px; align-items:center;
+.block-container { padding-top: 26px; max-width: 1320px; }  /* extra top space */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: 0 6px 18px rgba(15,23,42,.05);
+  margin-bottom: 14px;
 }
-.header-row { padding: 10px 12px; border-bottom:1px solid var(--line); background:#eef2ff; border-radius:12px; font-weight:700;}
-.data-row { padding: 10px 12px; border-bottom:1px solid var(--line); }
-.data-row:hover { background:#fbfbfe; border-radius:12px; }
-.h1 { font-size: 1.55rem; font-weight: 800; letter-spacing:.2px; margin:0 0 6px 0; }
+
+.h1 { font-size: 1.6rem; font-weight: 800; letter-spacing: .2px; margin: 0; }
+.subtle { color: var(--muted); font-size: .92rem; }
+
+.header-grid, .row-grid {
+  display: grid;
+  grid-template-columns: 0.9fr 3fr 1.4fr repeat(6, 1.05fr) 0.9fr;
+  gap: 10px;
+  align-items: center;
+}
+.header-grid {
+  background: #eef2ff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 700;
+  color: #111827;
+}
+.row-grid {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.row-grid + .row-grid { margin-top: 8px; }
+.row-grid:hover { background: #fbfbfe; }
+
 .badge {
-  display:inline-block; padding:6px 12px; border-radius:999px;
-  border:1px solid var(--line); background:#f3f4f6; color:#111827; font-weight:700; cursor:pointer;
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #f3f4f6;
+  color: #111827;
+  font-weight: 700;
 }
-.pill { width:100%; border-radius:10px; padding:8px 0; font-weight:700; border:1px solid var(--line); background:#ffffff; color:#111827; cursor:pointer; }
-.pill-done { background:#ebf5ff; border-color:#cfe0ff; color:#1e40af; }
-.pill-rej  { background:#fff1f2; border-color:#fecdd3; color:#881337; }
-.trash > button { width:100%; border-radius:10px; border:1px solid var(--danger); color:var(--danger); background:#fff5f5; font-weight:700; padding:8px 0; }
-.new-btn > button { background:#111827; border:1px solid #0b1220; color:#fff; font-weight:700; border-radius:10px; padding:8px 14px; }
+
+.pill {
+  width: 100%;
+  border-radius: 10px;
+  padding: 8px 0;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: #111827;
+}
+.pill:hover { background: var(--pri-soft); border-color: #d7e2ff; }
+.pill-done {
+  background: var(--done-bg);
+  border-color: var(--done-border);
+  color: #1e40af;
+}
+.pill-rej {
+  background: var(--rej-bg);
+  border-color: var(--rej-border);
+  color: #881337;
+}
+
+.icon-btn > button {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  font-weight: 700;
+  padding: 6px 0;
+}
+.icon-btn > button:hover { background: #f7f9ff; }
+
+.trash > button {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  background: #fff5f5;
+  font-weight: 700;
+  padding: 6px 0;
+}
+
+.add-row-grid {
+  display: grid;
+  grid-template-columns: 3fr 1.4fr 0.9fr;
+  gap: 10px;
+  align-items: center;
+}
+.add-btn > button {
+  background: #111827;
+  border: 1px solid #0b1220;
+  color: #fff;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 8px 14px;
+}
 </style>
 """, unsafe_allow_html=True)
 
+# ---------------- Utils ----------------
 def rerun():
     if hasattr(st, "rerun"): st.rerun()
     else: st.experimental_rerun()
 
-# ---------- DB ----------
+# ---------------- DB ----------------
 def conn(): return sqlite3.connect(DB_FILE, check_same_thread=False)
+
 def init_db():
     with conn() as c:
         c.execute("""
             CREATE TABLE IF NOT EXISTS funds (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ord INTEGER DEFAULT 1000,
                 fund_name TEXT NOT NULL,
                 assigned_date TEXT NOT NULL,
                 step2_info  INTEGER DEFAULT 0,
@@ -80,88 +166,135 @@ def init_db():
 
 def add_fund(name:str, assigned:str):
     with conn() as c:
-        c.execute("INSERT INTO funds (fund_name, assigned_date) VALUES (?,?)", (name.strip(), assigned))
-        c.commit()
+        max_ord = c.execute("SELECT COALESCE(MAX(ord),0) FROM funds").fetchone()[0] or 0
+        c.execute("INSERT INTO funds (ord, fund_name, assigned_date) VALUES (?,?,?)",
+                  (max_ord + 10, name.strip(), assigned)); c.commit()
 
 def load_df():
     with conn() as c:
-        return pd.read_sql_query("SELECT * FROM funds ORDER BY id DESC", c)
+        return pd.read_sql_query("SELECT * FROM funds ORDER BY ord, id", c)
 
 def set_field(row_id:int, field:str, value):
     with conn() as c:
         c.execute(f"UPDATE funds SET {field}=? WHERE id=?", (value, row_id)); c.commit()
 
+def swap_order(id_a:int, id_b:int):
+    with conn() as c:
+        a = c.execute("SELECT ord FROM funds WHERE id=?", (id_a,)).fetchone()[0]
+        b = c.execute("SELECT ord FROM funds WHERE id=?", (id_b,)).fetchone()[0]
+        c.execute("UPDATE funds SET ord=? WHERE id=?", (b, id_a))
+        c.execute("UPDATE funds SET ord=? WHERE id=?", (a, id_b))
+        c.commit()
+
 def delete_row(row_id:int):
     with conn() as c:
         c.execute("DELETE FROM funds WHERE id=?", (row_id,)); c.commit()
 
-def stamp_first(old_flag:int, old_date:str|None):
-    """If not already done, mark done + store today's date."""
-    if not old_flag:
-        return 1, TODAY_STR()
-    return old_flag, old_date
+# Toggle helper: click to set done (stamp today) OR undo (clear flag & date)
+def toggle_step(row, colname):
+    done = int(row[colname])
+    date_col = colname + "_date"
+    if done:
+        # undo
+        set_field(row["id"], colname, 0)
+        set_field(row["id"], date_col, None)
+    else:
+        # do + stamp
+        set_field(row["id"], colname, 1)
+        set_field(row["id"], date_col, TODAY_ISO())
+    rerun()
 
-# ---------- App ----------
+# ---------------- App ----------------
 init_db()
 
-# Title + New Fund inline
-st.markdown('<div class="card"><div class="h1">FUND REVIEW TRACKER</div></div>', unsafe_allow_html=True)
-c1, c2, c3 = st.columns([3,1.2,0.8])
-name = c1.text_input("Fund Name", placeholder="e.g., Alpha Fund IV", label_visibility="collapsed")
-assigned = c2.date_input("Assigned Date", value=pd.to_datetime("today")).strftime("%Y-%m-%d")
-with c3:
-    st.markdown('<div class="new-btn">', unsafe_allow_html=True)
-    if st.button("Add", use_container_width=True, type="primary", disabled=not name.strip()):
-        add_fund(name, assigned); st.success("Fund added."); rerun()
+# Title
+st.markdown(
+    '<div class="card"><div class="h1">FUND REVIEW TRACKER</div>'
+    '<div class="subtle">Colorful pills for each step. Click to mark done (or click again to undo). '
+    'Dates show inside the pill as <b>MMM-DD</b>. Use ▲/▼ to reorder rows.</div></div>',
+    unsafe_allow_html=True
+)
+
+# Add row (no dropdown)
+with st.container():
+    st.markdown('<div class="card add-row-grid">', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([3,1.4,0.9], gap="small")
+    name = c1.text_input("Fund Name", placeholder="e.g., Alpha Fund IV", label_visibility="collapsed")
+    assigned = c2.date_input("Assigned Date", value=pd.to_datetime("today"))
+    with c3:
+        st.markdown('<div class="add-btn">', unsafe_allow_html=True)
+        if st.button("Add", use_container_width=True, type="primary", disabled=not name.strip()):
+            add_fund(name, assigned.strftime("%Y-%m-%d")); st.success("Fund added."); rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
+# Load + types
 df = load_df()
 if df.empty:
     st.info("No funds yet. Add your first fund above."); st.stop()
 
 df["assigned_date"] = pd.to_datetime(df["assigned_date"], errors="coerce").dt.date
-for col, _ in STEPS: df[col] = df[col].astype(bool)
+for col, _ in STEPS:
+    if col in df.columns:
+        df[col] = df[col].astype(bool)
 
 # Header
 st.markdown(
-    '<div class="card header-row"><div>Fund</div><div>Assigned</div>' +
-    ''.join([f'<div>{label}</div>' for _,label in STEPS]) + '<div></div></div>',
+    '<div class="header-grid">'
+    '<div></div><div>Fund</div><div>Assigned</div>'
+    + ''.join([f'<div>{label}</div>' for _, label in STEPS])
+    + '<div></div></div>',
     unsafe_allow_html=True
 )
 
 # Rows
-for _, row in df.iterrows():
+for i, row in df.reset_index(drop=True).iterrows():
     rid = int(row["id"])
-    cols = st.columns([3,1.2] + [1]*len(STEPS) + [.9], gap="small")
+    # Determine neighbors for reordering
+    prev_id = int(df.iloc[i-1]["id"]) if i > 0 else None
+    next_id = int(df.iloc[i+1]["id"]) if i < len(df)-1 else None
 
-    # Fund name edit
-    new_name = cols[0].text_input("fund", value=row["fund_name"], label_visibility="collapsed", key=f"name_{rid}")
+    grid = st.columns([0.9, 3, 1.4] + [1.05]*len(STEPS) + [0.9], gap="small")
+
+    # Reorder arrows
+    with grid[0]:
+        st.markdown('<div class="icon-btn">', unsafe_allow_html=True)
+        up = st.button("▲", key=f"up_{rid}", use_container_width=True, disabled=(prev_id is None))
+        down = st.button("▼", key=f"down_{rid}", use_container_width=True, disabled=(next_id is None))
+        st.markdown('</div>', unsafe_allow_html=True)
+        if up and prev_id is not None:
+            swap_order(rid, prev_id)
+            rerun()
+        if down and next_id is not None:
+            swap_order(rid, next_id)
+            rerun()
+
+    # Fund name (inline edit)
+    new_name = grid[1].text_input("fund", value=row["fund_name"], label_visibility="collapsed", key=f"name_{rid}")
     if new_name != row["fund_name"]:
         set_field(rid, "fund_name", new_name.strip()); rerun()
 
-    # Assigned pill clickable to change date
-    with cols[1]:
-        if st.button(FMT(row["assigned_date"]), key=f"assignpill_{rid}", use_container_width=True):
-            # When clicked, show date input popup
-            new_date = st.date_input("Set Assigned Date", value=row["assigned_date"], key=f"ass_{rid}")
+    # Assigned pill — click to open a compact date picker inline
+    with grid[2]:
+        label = FMT(row["assigned_date"])
+        if st.button(f"Assigned: {label}", key=f"assignpill_{rid}", use_container_width=True):
+            # reveal inline date input for this row
+            new_date = st.date_input(" ", value=row["assigned_date"], label_visibility="collapsed", key=f"ass_picker_{rid}")
             if str(new_date) != str(row["assigned_date"]):
                 set_field(rid, "assigned_date", str(new_date)); rerun()
 
     # Step pills
-    for i, (colname, label) in enumerate(STEPS):
+    for idx_s, (colname, label) in enumerate(STEPS):
         done = bool(row[colname])
-        stored_date = row.get(colname + "_date")
-        pill_text = FMT(stored_date) if done and stored_date else label
-        pill_class = "pill-rej" if (colname=="step7_rej" and done) else ("pill-done" if done else "pill")
-        if cols[2+i].button(pill_text, key=f"{colname}_{rid}", use_container_width=True):
-            new_flag, new_date = stamp_first(int(done), stored_date)
-            if new_flag != int(done):
-                set_field(rid, colname, new_flag)
-                set_field(rid, colname + "_date", new_date)
-                rerun()
+        stored = row.get(colname + "_date")
+        text = FMT(stored) if (done and stored) else label
+        css = "pill-rej" if (colname == "step7_rej" and done) else ("pill-done" if done else "pill")
+        with grid[3 + idx_s]:
+            if st.button(text, key=f"{colname}_{rid}", use_container_width=True):
+                toggle_step({"id": rid, colname: int(done)}, colname)
 
-    # Delete if rejected
-    with cols[-1]:
+    # Delete (only when rejected)
+    with grid[-1]:
         if row["step7_rej"]:
             st.markdown('<div class="trash">', unsafe_allow_html=True)
             if st.button("🗑️", key=f"del_{rid}", help="Delete this rejected fund", use_container_width=True):
