@@ -43,6 +43,7 @@ st.markdown("""
 
 # ---------------- DB ----------------
 def conn(): return sqlite3.connect(DB_FILE, check_same_thread=False)
+
 def init_db():
     with conn() as c:
         c.execute("""
@@ -64,19 +65,24 @@ def init_db():
                 step7_rej_date   TEXT
             )
         """); c.commit()
+
 def add_fund(name:str, assigned:str):
     with conn() as c:
         c.execute("INSERT INTO funds (fund_name, assigned_date) VALUES (?,?)", (name.strip(), assigned))
         c.commit()
+
 def load_df():
     with conn() as c:
         return pd.read_sql_query("SELECT * FROM funds", c)
+
 def set_field(row_id:int, field:str, value):
     with conn() as c:
         c.execute(f"UPDATE funds SET {field}=? WHERE id=?", (value, row_id)); c.commit()
+
 def delete_row(row_id:int):
     with conn() as c:
         c.execute("DELETE FROM funds WHERE id=?", (row_id,)); c.commit()
+
 def toggle_step(row_id:int, colname:str):
     with conn() as c:
         done = c.execute(f"SELECT {colname} FROM funds WHERE id=?", (row_id,)).fetchone()[0]
@@ -91,7 +97,7 @@ def toggle_step(row_id:int, colname:str):
 if "toggle_request" in st.query_params:
     data = json.loads(st.query_params["toggle_request"])
     toggle_step(data["id"], data["col"])
-    st.stop()  # End early for AJAX request
+    st.stop()
 
 # ---------------- App ----------------
 init_db()
@@ -106,7 +112,7 @@ with c3:
     st.markdown('<div class="add-btn">', unsafe_allow_html=True)
     if st.button("Add", use_container_width=True, type="primary", disabled=not name.strip()):
         add_fund(name, assigned.strftime("%Y-%m-%d"))
-        st.experimental_rerun()
+        st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -114,6 +120,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 df = load_df()
 if df.empty:
     st.info("No funds yet. Add your first fund above."); st.stop()
+
 df["assigned_date"] = pd.to_datetime(df["assigned_date"], errors="coerce").dt.date
 df = df.sort_values(by="assigned_date", ascending=True)
 for col, _ in STEPS:
@@ -136,15 +143,15 @@ for _, row in df.iterrows():
     new_name = grid[0].text_input("fund", value=row["fund_name"], label_visibility="collapsed", key=f"name_{rid}")
     if new_name != row["fund_name"]:
         set_field(rid, "fund_name", new_name.strip())
-        st.experimental_rerun()
+        st.rerun()
 
     # Assigned date
     new_date = grid[1].date_input(" ", value=row["assigned_date"] if row["assigned_date"] else datetime.today().date(), label_visibility="collapsed", key=f"ass_picker_{rid}")
     if str(new_date) != str(row["assigned_date"]):
         set_field(rid, "assigned_date", str(new_date))
-        st.experimental_rerun()
+        st.rerun()
 
-    # Step pills
+    # Step pills (instant JS toggle)
     for idx_s, (colname, label) in enumerate(STEPS):
         done = bool(row[colname])
         stored = row.get(colname + "_date")
@@ -153,7 +160,6 @@ for _, row in df.iterrows():
         if colname == "step7_rej":
             classes += " rej"
 
-        # JS instant update
         grid[2 + idx_s].markdown(f"""
             <button class="{classes}" 
                     onclick="this.classList.toggle('done');
@@ -162,9 +168,9 @@ for _, row in df.iterrows():
             </button>
         """, unsafe_allow_html=True)
 
-    # Delete
+    # Delete button
     with grid[-1]:
         if row["step7_rej"]:
             if st.button("🗑️", key=f"del_{rid}", help="Delete this rejected fund", use_container_width=True):
                 delete_row(rid)
-                st.experimental_rerun()
+                st.rerun()
