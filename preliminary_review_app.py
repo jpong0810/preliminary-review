@@ -5,9 +5,10 @@ from datetime import datetime
 
 # ---------- Config ----------
 DB_FILE = "fund_checklist.db"
-TODAY = lambda: datetime.today().strftime("%Y-%m-%d")
+TODAY_STR = lambda: datetime.today().strftime("%Y-%m-%d")   # stored in DB
+FMT = lambda s: (pd.to_datetime(s).strftime("%b-%d") if pd.notna(pd.to_datetime(s, errors="coerce")) else "—")
 
-# Step columns (header labels only; checkboxes have no labels)
+# Steps (pill buttons; show label until first click, then show MMM-DD)
 STEPS = [
     ("step2_info",  "Info Request"),
     ("step3_anlys", "Analyst"),
@@ -20,68 +21,42 @@ STEPS = [
 # ---------- Streamlit setup ----------
 st.set_page_config(page_title="Fund Review Tracker", layout="wide")
 
-# Polished, colorful styling (header, badges, compact cells, large checkboxes)
+# Polished UI
 st.markdown("""
 <style>
-:root {
-  --bg:#f6f7fb; --card:#ffffff; --ink:#222; --muted:#6b7280; --line:#e7e8ef;
-  --primary:#2b6fff; --success:#22c55e; --warn:#f59e0b; --danger:#ef4444;
+:root{
+  --bg:#f6f7fb; --card:#fff; --ink:#0f172a; --muted:#6b7280; --line:#e7e8ef;
+  --primary:#3b82f6; --ok:#10b981; --warn:#f59e0b; --danger:#ef4444;
 }
 html, body { background: var(--bg) !important; }
-.block-container { padding-top: 12px; max-width: 1280px; }
-
+.block-container { padding-top: 10px; max-width: 1280px; }
 .card {
   background: var(--card); border:1px solid var(--line); border-radius:16px;
-  padding: 18px 20px; box-shadow: 0 6px 18px rgba(15, 23, 42, .05);
+  padding: 18px 20px; box-shadow: 0 6px 18px rgba(15,23,42,.05);
 }
-
-/* Title bar */
-.titlebar { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-.titlebar h1 { margin:0; font-size: 1.55rem; letter-spacing:.2px; }
-
-/* “New Fund” button style override */
-div.stButton > button[kind="primary"] {
-  background: #111827; border: 1px solid #0b1220; color: #fff; font-weight: 600;
-  border-radius: 10px; padding: 8px 14px;
+.header-row, .data-row {
+  display:grid; grid-template-columns: 3fr 1.2fr repeat(6, 1fr) .9fr; gap:10px; align-items:center;
 }
+.header-row { padding: 10px 12px; border-bottom:1px solid var(--line); background:#eef2ff; border-radius:12px; font-weight:700;}
+.data-row { padding: 10px 12px; border-bottom:1px solid var(--line); }
+.data-row:hover { background:#fbfbfe; border-radius:12px; }
+.h1 { font-size: 1.55rem; font-weight: 800; letter-spacing:.2px; margin:0 0 6px 0; }
 
-/* Table header row */
-.header-row {
-  display:grid; grid-template-columns: 3fr 1.3fr repeat(6, 1fr) .8fr; gap:10px;
-  padding:10px 12px; margin-top:12px; border-bottom:1px solid var(--line);
-  color:#111827; font-weight: 600; background: #eef2ff; border-radius: 12px;
-}
-
-/* Data row grid */
-.grid {
-  display:grid; grid-template-columns: 3fr 1.3fr repeat(6, 1fr) .8fr; gap:10px;
-  align-items:center; padding:10px 12px; border-bottom:1px solid var(--line);
-}
-.grid:hover { background:#fbfbfe; border-radius:12px; }
-
-/* Inputs tidy */
-input, textarea { font-size: .95rem !important; }
-
-/* Badge for Assigned */
 .badge {
-  display:inline-block; padding:6px 10px; border-radius:999px; font-weight:600;
-  border:1px solid var(--line); background:#f3f4f6; color:#111827;
+  display:inline-block; padding:6px 12px; border-radius:999px;
+  border:1px solid var(--line); background:#f3f4f6; color:var(--ink); font-weight:700;
 }
 
-/* Make checkboxes larger & colorful */
-input[type="checkbox"] {
-  width: 20px; height: 20px; accent-color: var(--primary);
-}
+.pill { width:100%; border-radius:10px; padding:8px 0; font-weight:700; border:1px solid var(--line); background:#ffffff; color:#111827; }
+.pill-done { background:#ebf5ff; border-color:#cfe0ff; color:#1e40af; }  /* after stamped show date */
+.pill-rej  { background:#fff1f2; border-color:#fecdd3; color:#881337; }
 
-/* Trash button */
-.trash > button {
-  width:100%; border-radius:10px; border:1px solid var(--danger);
-  color:var(--danger); background:#fff5f5; font-weight:600; padding:6px 0;
-}
+.trash > button { width:100%; border-radius:10px; border:1px solid var(--danger); color:var(--danger); background:#fff5f5; font-weight:700; padding:8px 0; }
+.new-btn > button { background:#111827; border:1px solid #0b1220; color:#fff; font-weight:700; border-radius:10px; padding:8px 14px; }
+.small { color: var(--muted); font-size:.9rem; }
 </style>
 """, unsafe_allow_html=True)
 
-# Rerun shim
 def rerun():
     if hasattr(st, "rerun"): st.rerun()
     else: st.experimental_rerun()
@@ -116,7 +91,7 @@ def add_fund(name:str, assigned:str):
         c.execute("INSERT INTO funds (fund_name, assigned_date) VALUES (?,?)",
                   (name.strip(), assigned)); c.commit()
 
-def load_df() -> pd.DataFrame:
+def load_df():
     with conn() as c:
         return pd.read_sql_query("SELECT * FROM funds ORDER BY id DESC", c)
 
@@ -128,71 +103,83 @@ def delete_row(row_id:int):
     with conn() as c:
         c.execute("DELETE FROM funds WHERE id=?", (row_id,)); c.commit()
 
-def stamp_if_new(old_val:int, new_val:bool, old_date:str|None):
-    if (not old_val) and bool(new_val) and (not old_date): return TODAY()
-    return old_date
+def stamp_first(old_flag:int, new_click:bool, old_date:str|None) -> tuple[int,str|None]:
+    """If clicked and not previously done, mark done + store today's date. Otherwise keep as-is."""
+    if new_click and not old_flag:
+        return 1, TODAY_STR()
+    return old_flag, old_date
 
 # ---------- App ----------
 init_db()
 
-# Title bar + New Fund
-st.markdown('<div class="card titlebar"><h1>FUND REVIEW TRACKER</h1></div>', unsafe_allow_html=True)
+st.markdown('<div class="card"><div class="h1">FUND REVIEW TRACKER</div><div class="small">Click a step bubble to stamp today’s date. After stamping, the bubble shows <b>MMM-DD</b>. “Rejected” reveals a delete button.</div></div>', unsafe_allow_html=True)
+
 with st.expander("➕ New Fund", expanded=False):
     c1, c2, c3 = st.columns([3,1.2,0.8])
-    fund_name = c1.text_input("Fund Name", placeholder="e.g., Alpha Fund IV")
-    assigned  = c2.date_input("Assigned Date", value=pd.to_datetime("today")).strftime("%Y-%m-%d")
-    if c3.button("Add", type="primary", disabled=(not fund_name.strip())):
-        add_fund(fund_name, assigned)
-        st.success("Fund added.")
-        rerun()
+    name = c1.text_input("Fund Name", placeholder="e.g., Alpha Fund IV")
+    assigned = c2.date_input("Assigned Date", value=pd.to_datetime("today")).strftime("%Y-%m-%d")
+    with c3:
+        st.markdown('<div class="new-btn">', unsafe_allow_html=True)
+        if st.button("Add", use_container_width=True, type="primary", disabled=not name.strip()):
+            add_fund(name, assigned); st.success("Fund added."); rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 df = load_df()
 if df.empty:
-    st.info("No funds yet. Add your first fund above.")
-    st.stop()
+    st.info("No funds yet. Add your first fund above."); st.stop()
 
-# Types
+# types
 df["assigned_date"] = pd.to_datetime(df["assigned_date"], errors="coerce").dt.date
 for col, _ in STEPS: df[col] = df[col].astype(bool)
 
-# Header row
+# header
 st.markdown(
-    f'<div class="card header-row">'
-    f'<div>Fund</div><div>Assigned</div>'
-    + ''.join([f'<div>{label}</div>' for _,label in STEPS])
-    + '<div></div></div>',
+    '<div class="card header-row"><div>Fund</div><div>Assigned</div>' +
+    ''.join([f'<div>{label}</div>' for _,label in STEPS]) + '<div></div></div>',
     unsafe_allow_html=True
 )
 
-# Data rows
+# rows
 for _, row in df.iterrows():
     rid = int(row["id"])
-    cols = st.columns([3,1.3] + [1]*len(STEPS) + [.8], gap="small")
+    cols = st.columns([3,1.2] + [1]*len(STEPS) + [.9], gap="small")
 
-    # Fund name (auto-save)
+    # Fund name (inline edit, autosave)
     new_name = cols[0].text_input("fund", value=row["fund_name"], label_visibility="collapsed", key=f"name_{rid}")
     if new_name != row["fund_name"]:
         set_field(rid, "fund_name", new_name.strip()); rerun()
 
-    # Assigned badge + date editor
+    # Assigned pill + (optional) quick edit on click of date input below
     with cols[1]:
-        st.markdown(f'<span class="badge">Assigned</span>', unsafe_allow_html=True)
+        st.markdown(f'<span class="badge">Assigned: {FMT(row["assigned_date"])}</span>', unsafe_allow_html=True)
         new_assigned = st.date_input("assigned", value=row["assigned_date"], label_visibility="collapsed", key=f"ass_{rid}")
         if str(new_assigned) != str(row["assigned_date"]):
             set_field(rid, "assigned_date", str(new_assigned)); rerun()
 
-    # Step checkboxes (no labels in cells; hover shows completion date)
+    # Step pills
     for i, (colname, label) in enumerate(STEPS):
-        tip = f"Completed: {row.get(colname+'_date')}" if row.get(colname+"_date") else f"{label}: not completed"
-        checked = cols[2+i].checkbox(label, value=bool(row[colname]), help=tip, label_visibility="collapsed", key=f"{colname}_{rid}")
-        if checked != bool(row[colname]):
-            stamp = stamp_if_new(int(row[colname]), checked, row.get(colname+"_date"))
-            set_field(rid, colname, int(checked))
-            set_field(rid, colname+"_date", stamp)
-            rerun()
+        done = bool(row[colname])
+        stored_date = row.get(colname + "_date")
+        pill_text = FMT(stored_date) if done and stored_date else label  # show label until first stamp, then show MMM-DD
+        pill_class = "pill-rej" if (colname=="step7_rej" and done) else ("pill-done" if done else "pill")
+        help_tip = f"{label}: " + (f"completed {FMT(stored_date)}" if stored_date else "not completed")
+        with cols[2+i]:
+            # Render as a button that stamps once
+            st.markdown(f'<div><button class="{pill_class}" disabled></button></div>', unsafe_allow_html=True)
+            # Use a real Streamlit button for click handling (styled by global CSS)
+            clicked = st.button(pill_text, key=f"{colname}_{rid}", use_container_width=True)
+            if clicked:
+                new_flag, new_date = stamp_first(int(done), True, stored_date)
+                # Only write if we actually changed from not-done -> done
+                if new_flag and not done:
+                    set_field(rid, colname, 1)
+                    set_field(rid, colname + "_date", new_date)
+                    rerun()
 
-    # Delete if rejected
+    # Delete button appears only when Rejected is done
     with cols[-1]:
         if row["step7_rej"]:
+            st.markdown('<div class="trash">', unsafe_allow_html=True)
             if st.button("🗑️", key=f"del_{rid}", help="Delete this rejected fund", use_container_width=True):
                 delete_row(rid); rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
