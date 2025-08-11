@@ -28,7 +28,6 @@ st.markdown("""
 }
 html, body { background: var(--bg) !important; }
 .block-container { padding-top: 28px; max-width: 1320px; }
-
 .card {
   background: var(--card);
   border: 1px solid var(--line);
@@ -37,7 +36,6 @@ html, body { background: var(--bg) !important; }
   box-shadow: 0 6px 18px rgba(15,23,42,.05);
   margin-bottom: 14px;
 }
-
 .h1 { font-size: 1.6rem; font-weight: 800; margin: 0; }
 
 /* Grid */
@@ -52,25 +50,9 @@ html, body { background: var(--bg) !important; }
   padding: 10px 12px; font-weight: 700;
 }
 
-/* Add row */
-.add-row-grid {
-  display: grid;
-  grid-template-columns: 2fr 1.3fr 0.9fr;
-  gap: 10px;
-  align-items: center;
-}
-.add-btn > button {
-  background: #111827;
-  border: 1px solid #0b1220;
-  color: #fff;
-  font-weight: 700;
-  border-radius: 10px;
-  padding: 8px 14px;
-}
-
-/* Pill buttons (style only the pills inside our wrapper so other buttons keep default look) */
-.pill-wrap { display:flex; flex-direction:column; align-items:stretch; }
-.pill-wrap > div.stButton > button {
+/* Pills */
+.html-pill {
+  display: block;
   width: 100%;
   border-radius: 10px;
   padding: 8px;
@@ -78,16 +60,16 @@ html, body { background: var(--bg) !important; }
   border: 2px solid var(--blue);
   background: var(--blue);
   color: #ffffff;
+  text-align: center;
+  text-decoration: none;
 }
-.pill-wrap.done > div.stButton > button {
+.html-pill.done {
   background: #ffffff;
   color: var(--blue);
-  border-color: var(--blue);
 }
-.pill-wrap.rej.done > div.stButton > button {
-  background: #ffffff;
-  color: var(--red);
+.html-pill.rej.done {
   border-color: var(--red);
+  color: var(--red);
 }
 .pill-caption {
   margin-top: 4px;
@@ -96,7 +78,6 @@ html, body { background: var(--bg) !important; }
   text-align: center;
   color: #111827;
   opacity: .75;
-  user-select: none;
 }
 
 /* Delete button */
@@ -177,16 +158,15 @@ init_db()
 # Title
 st.markdown('<div class="card"><div class="h1">FUND REVIEW TRACKER</div></div>', unsafe_allow_html=True)
 
-# Add row (inline)
-st.markdown('<div class="card add-row-grid">', unsafe_allow_html=True)
+# Add row
+st.markdown('<div class="card">', unsafe_allow_html=True)
 c1, c2, c3 = st.columns([2, 1.3, 0.9], gap="small")
 name = c1.text_input("Fund Name", placeholder="e.g., Alpha Fund IV", label_visibility="collapsed")
 assigned = c2.date_input("Assigned Date", value=pd.to_datetime("today"))
 with c3:
-    st.markdown('<div class="add-btn">', unsafe_allow_html=True)
     if st.button("Add", use_container_width=True, type="primary", disabled=not name.strip()):
-        add_fund(name, assigned.strftime("%Y-%m-%d")); st.success("Fund added."); rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+        add_fund(name, assigned.strftime("%Y-%m-%d"))
+        st.success("Fund added."); rerun()
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Load & sort oldest first
@@ -217,7 +197,7 @@ for _, row in df.iterrows():
     if new_name != row["fund_name"]:
         set_field(rid, "fund_name", new_name.strip()); rerun()
 
-    # Assigned date (editable)
+    # Assigned date
     new_date = grid[1].date_input(
         label=" ",
         value=row["assigned_date"] if row["assigned_date"] else datetime.today().date(),
@@ -227,28 +207,24 @@ for _, row in df.iterrows():
     if str(new_date) != str(row["assigned_date"]):
         set_field(rid, "assigned_date", str(new_date)); rerun()
 
-    # Step pills: blue -> white; show caption so you can always read the step
+    # Step pills (HTML for style, hidden form button for click)
     for idx_s, (colname, label) in enumerate(STEPS):
         done = bool(row[colname])
         stored = row.get(colname + "_date")
-        text = FMT(stored) if (done and stored) else label
+        pill_text = FMT(stored) if (done and stored) else label
 
-        wrap_cls = "pill-wrap"
-        if done: wrap_cls += " done"
-        if colname == "step7_rej": wrap_cls += " rej"
+        css_class = "html-pill"
+        if done: css_class += " done"
+        if colname == "step7_rej": css_class += " rej"
 
         with grid[2 + idx_s]:
-            st.markdown(f"<div class='{wrap_cls}'>", unsafe_allow_html=True)
-            if st.button(text, key=f"{colname}_{rid}", use_container_width=True):
-                toggle_step({"id": rid, colname: int(done)}, colname)
-            # caption always shows the step label in small text beneath
+            with st.form(key=f"form_{rid}_{colname}", clear_on_submit=True):
+                st.markdown(f"<div class='{css_class}'>{pill_text}</div>", unsafe_allow_html=True)
+                st.form_submit_button(label="", on_click=lambda r=row, c=colname: toggle_step(r, c))
             st.markdown(f"<div class='pill-caption'>{label}</div>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
 
     # Delete (only when rejected)
     with grid[-1]:
         if row["step7_rej"]:
-            st.markdown('<div class="trash">', unsafe_allow_html=True)
             if st.button("🗑️", key=f"del_{rid}", help="Delete this rejected fund", use_container_width=True):
                 delete_row(rid); rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
