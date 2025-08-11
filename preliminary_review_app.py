@@ -39,7 +39,7 @@ html, body { background: var(--bg) !important; }
   margin-bottom: 14px;
 }
 
-.h1 { font-size: 1.6rem; font-weight: 800; letter-spacing: .2px; margin: 0; }
+.h1 { font-size: 1.6rem; font-weight: 800; margin: 0; }
 .subtle { color: var(--muted); font-size: .92rem; }
 
 .header-grid, .row-grid {
@@ -54,7 +54,6 @@ html, body { background: var(--bg) !important; }
   border-radius: 12px;
   padding: 10px 12px;
   font-weight: 700;
-  color: #111827;
 }
 .row-grid {
   background: #fff;
@@ -63,12 +62,11 @@ html, body { background: var(--bg) !important; }
   padding: 10px 12px;
 }
 .row-grid + .row-grid { margin-top: 8px; }
-.row-grid:hover { background: #fbfbfe; }
 
 .pill {
   width: 100%;
   border-radius: 10px;
-  padding: 8px 0;
+  padding: 6px;
   font-weight: 700;
   border: 1px solid var(--line);
   background: #ffffff;
@@ -234,13 +232,18 @@ for _, row in df.iterrows():
     if new_name != row["fund_name"]:
         set_field(rid, "fund_name", new_name.strip()); rerun()
 
-    # Assigned pill
+    # Assigned date — always editable, styled like pill
     with grid[1]:
-        label = FMT(row["assigned_date"])
-        if st.button(f"Assigned: {label}", key=f"assignpill_{rid}", use_container_width=True):
-            new_date = st.date_input(" ", value=row["assigned_date"], label_visibility="collapsed", key=f"ass_picker_{rid}")
-            if str(new_date) != str(row["assigned_date"]):
-                set_field(rid, "assigned_date", str(new_date)); rerun()
+        st.markdown(f"<div class='pill'>{''}</div>", unsafe_allow_html=True)
+        new_date = st.date_input(
+            label=" ",
+            value=row["assigned_date"] if row["assigned_date"] else datetime.today().date(),
+            label_visibility="collapsed",
+            key=f"ass_picker_{rid}"
+        )
+        if str(new_date) != str(row["assigned_date"]):
+            set_field(rid, "assigned_date", str(new_date))
+            rerun()
 
     # Step pills
     for idx_s, (colname, label) in enumerate(STEPS):
