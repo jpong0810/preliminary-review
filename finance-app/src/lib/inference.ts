@@ -110,7 +110,7 @@ export async function inferThoughtMeta(
       const msg = await anthropic.messages.create({
         model: "claude-sonnet-5",
         max_tokens: 500,
-        tools: [{ type: "web_search_20250305", name: "web_search" } as unknown as Anthropic.Tool],
+        tools: [{ type: "web_search_20260209", name: "web_search" } as unknown as Anthropic.Tool],
         messages: [
           {
             role: "user",

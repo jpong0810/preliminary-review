@@ -18,7 +18,7 @@ export async function checkPriceRule(rule: Rule): Promise<PriceRuleCheckResult |
     const msg = await anthropic.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 500,
-      tools: [{ type: "web_search_20250305", name: "web_search" } as unknown as Anthropic.Tool],
+      tools: [{ type: "web_search_20260209", name: "web_search" } as unknown as Anthropic.Tool],
       messages: [
         {
           role: "user",
@@ -56,7 +56,7 @@ export async function lookupFxRate(currency: string): Promise<number | null> {
     const msg = await anthropic.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 200,
-      tools: [{ type: "web_search_20250305", name: "web_search" } as unknown as Anthropic.Tool],
+      tools: [{ type: "web_search_20260209", name: "web_search" } as unknown as Anthropic.Tool],
       messages: [
         {
           role: "user",

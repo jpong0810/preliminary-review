@@ -37,13 +37,44 @@ export default function DigestPage() {
   const [syntheses, setSyntheses] = useState<Synthesis[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [filter, setFilter] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  async function refresh() {
+    const [s, src] = await Promise.all([
+      fetch("/api/digest-syntheses").then((r) => r.json()),
+      fetch("/api/digest-sources").then((r) => r.json()),
+    ]);
+    setSyntheses(s);
+    setSources(src);
+  }
 
   useEffect(() => {
-    Promise.all([fetch("/api/digest-syntheses").then((r) => r.json()), fetch("/api/digest-sources").then((r) => r.json())]).then(([s, src]) => {
-      setSyntheses(s);
-      setSources(src);
-    });
+    refresh();
   }, []);
+
+  async function addFromLink() {
+    if (!linkUrl.trim()) return;
+    setLinkLoading(true);
+    setLinkError(null);
+    try {
+      const res = await fetch("/api/digest-sources/from-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: linkUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setLinkError(data.error ?? "Couldn't read that link.");
+        return;
+      }
+      setLinkUrl("");
+      await refresh();
+    } finally {
+      setLinkLoading(false);
+    }
+  }
 
   const filteredSyntheses = useMemo(
     () => syntheses.filter((s) => !filter || s.tags.some((t) => t.toLowerCase().includes(filter.toLowerCase())) || s.keyTakeaways.some((k) => k.toLowerCase().includes(filter.toLowerCase()))),
@@ -74,6 +105,41 @@ export default function DigestPage() {
           </Link>
         </div>
       </div>
+
+      <div className="card p-3 flex flex-col gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
+          <input
+            placeholder="Paste a link (article, video, podcast)…"
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addFromLink()}
+            className="flex-1 text-sm rounded-md border px-3 py-2 bg-transparent min-w-[220px]"
+            style={{ borderColor: "var(--border)" }}
+          />
+          <button
+            onClick={addFromLink}
+            disabled={linkLoading || !linkUrl.trim()}
+            className="text-sm font-medium px-4 py-2 rounded-md text-white disabled:opacity-50"
+            style={{ background: "var(--series-1)" }}
+          >
+            {linkLoading ? "Reading…" : "Add"}
+          </button>
+        </div>
+        {linkLoading && (
+          <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+            Reading the link and writing up key takeaways — this takes a bit longer than everything else here.
+          </div>
+        )}
+        {linkError && (
+          <div className="text-xs" style={{ color: "var(--status-critical)" }}>
+            {linkError}
+          </div>
+        )}
+        <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+          For when you&apos;re on a computer without Claude open — otherwise just paste the link straight into a Claude conversation.
+        </div>
+      </div>
+
       <input
         placeholder="Filter across sources and syntheses…"
         value={filter}
