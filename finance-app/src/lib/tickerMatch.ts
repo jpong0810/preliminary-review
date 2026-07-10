@@ -60,3 +60,24 @@ export function possibleUnheldTickers(text: string, holdings: Holding[]): string
   }
   return Array.from(out);
 }
+
+// Standard proxy tickers for broad themes mentioned generically ("the market", "semis")
+// with no specific holding to resolve against — these are looked up via web_search
+// (never guessed), so a thought about "the market" is checkable later even when
+// nothing in that theme is currently held.
+const GENERIC_INDEX_PROXIES: { pattern: RegExp; tickers: string[] }[] = [
+  { pattern: /\b(the )?(market|markets|broad market|indices|stocks in general|rebound|correction|sell[- ]?off|rally)\b/i, tickers: ["SPY", "QQQ"] },
+  { pattern: /\b(semis?|semiconductors?|chips?)\b/i, tickers: ["SMH"] },
+];
+
+/** Standard proxy tickers implied by generic theme language, excluding any already resolved via a held position. */
+export function impliedGenericTickers(text: string, alreadyMatched: string[]): string[] {
+  const matched = new Set(alreadyMatched.map((t) => t.toUpperCase()));
+  const out = new Set<string>();
+  for (const { pattern, tickers } of GENERIC_INDEX_PROXIES) {
+    if (pattern.test(text)) {
+      for (const t of tickers) if (!matched.has(t)) out.add(t);
+    }
+  }
+  return Array.from(out);
+}
