@@ -1,0 +1,253 @@
+// Personal Finance & Research Dashboard — schema
+// See project spec for full entity rationale.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Investments
+// ---------------------------------------------------------------------------
+
+model Account {
+  id          Int       @id @default(autoincrement())
+  name        String
+  institution String?
+  holdings    Holding[]
+  createdAt   DateTime  @default(now())
+
+  @@map("accounts")
+}
+
+// {region, weight}[]
+// geography_breakdown JSON shape: [{ region: string, weight: number }]
+
+model Holding {
+  id                Int      @id @default(autoincrement())
+  ticker            String
+  name              String
+  category          String // ETF | Stock | Fund | Private | Derivative | Cash | custom
+  sector            String // single-value mutually exclusive classification
+  geography         String // fallback label, e.g. US / Global / Asia / Europe
+  geographyBreakdown Json?   @map("geography_breakdown") // [{region, weight}] overrides `geography` when present
+  accountId         Int      @map("account_id")
+  account           Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tags              String[] @default([])
+  quantity          Float
+  currency          String   @default("USD")
+  price             Float // in `currency`, not necessarily USD
+  fxRateToUsd       Float    @default(1) @map("fx_rate_to_usd")
+  costBasis         Float?   @map("cost_basis") // per-unit, same currency as price
+  notes             String?  @db.Text
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  thoughts Thought[] @relation("ThoughtHoldings")
+
+  @@index([ticker])
+  @@index([accountId])
+  @@map("holdings")
+}
+
+enum RuleType {
+  exposure
+  price
+}
+
+model Rule {
+  id       Int      @id @default(autoincrement())
+  ruleType RuleType @map("rule_type")
+  label    String
+
+  // exposure rule fields
+  metric    String? // holding | category | sector | geography | tag
+  target    String?
+  operator  String? // max | min
+  threshold Float?
+
+  // price rule fields
+  ticker      String?
+  description String? @db.Text
+  lastStatus  String? @map("last_status") // ok | triggered
+  lastChecked DateTime? @map("last_checked")
+  lastNote    String?   @map("last_note") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("rules")
+}
+
+// ---------------------------------------------------------------------------
+// Thoughts
+// ---------------------------------------------------------------------------
+
+enum Sentiment {
+  bullish
+  bearish
+  neutral
+}
+
+// related_tickers JSON shape: [{ ticker: string, price: number }]
+
+model Thought {
+  id                Int       @id @default(autoincrement())
+  date              DateTime  @default(now()) // allow backdating
+  text              String    @db.Text
+  tags              String[]  @default([])
+  sentiment         Sentiment @default(neutral)
+  relatedTickers    Json?     @map("related_tickers")
+  linkedResearchId  Int?      @map("linked_research_id")
+  linkedResearch    Research? @relation("ThoughtSeededResearch", fields: [linkedResearchId], references: [id], onDelete: SetNull)
+  relatedHoldingIds Int[]     @default([]) @map("related_holding_ids")
+  relatedHoldings   Holding[] @relation("ThoughtHoldings")
+
+  // reverse: research entries this thought originally seeded
+  seededResearch Research[] @relation("ResearchSeedThought")
+  insightsFrom   Insight[]  @relation("InsightPromotedThought")
+  calls          Call[]     @relation("CallFromThought")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([date])
+  @@map("thoughts")
+}
+
+// ---------------------------------------------------------------------------
+// Research
+// ---------------------------------------------------------------------------
+
+// exposure_options JSON shape:
+// [{ vehicle, rationale: string[], accuracy_score: number, derivative_tier: number, note?: string }]
+// existing_exposure JSON shape: { summary: string, holding_ids: number[] }
+// sources JSON shape: [{ title: string, url?: string }]
+
+model Research {
+  id              Int      @id @default(autoincrement())
+  topic           String
+  thesisStatement String   @map("thesis_statement") @db.Text
+  date            DateTime @default(now())
+  summary         String   @db.Text
+  suggestion      String // worth a closer look | keep watching | pass for now
+  deepDive        String   @map("deep_dive") @db.Text
+  exposureOptions Json     @default("[]") @map("exposure_options")
+  existingExposure Json?   @map("existing_exposure")
+  tags            String[] @default([])
+
+  // the one thought that originally seeded this research (if any)
+  linkedThoughtId Int?     @map("linked_thought_id")
+  linkedThought   Thought? @relation("ResearchSeedThought", fields: [linkedThoughtId], references: [id], onDelete: SetNull)
+
+  sources Json @default("[]")
+
+  // thoughts logged FROM this research via "log a thought from this" (many, over repeat visits)
+  spawnedThoughts Thought[] @relation("ThoughtSeededResearch")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("research_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Digest
+// ---------------------------------------------------------------------------
+
+model DigestSource {
+  id            Int      @id @default(autoincrement())
+  title         String
+  speaker       String?
+  sourceType    String   @map("source_type") // podcast | video | article
+  url           String?
+  date          DateTime // actual publish/recording date
+  dateLogged    DateTime @default(now()) @map("date_logged")
+  keyTakeaways  String[] @default([]) @map("key_takeaways")
+  actionItems   String[] @default([]) @map("action_items")
+  tags          String[] @default([])
+
+  calls    Call[]    @relation("CallFromSource")
+  insights Insight[] @relation("InsightFromSource")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([dateLogged])
+  @@map("digest_sources")
+}
+
+model DigestSynthesis {
+  id                     Int      @id @default(autoincrement())
+  weekOf                 DateTime @map("week_of")
+  keyTakeaways           String[] @default([]) @map("key_takeaways")
+  consensusBullets       String[] @default([]) @map("consensus_bullets")
+  newOrContrarianBullets String[] @default([]) @map("new_or_contrarian_bullets")
+  actionItems            String[] @default([]) @map("action_items")
+  sourceIds              Int[]    @default([]) @map("source_ids")
+  tags                   String[] @default([])
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  @@index([weekOf])
+  @@map("digest_syntheses")
+}
+
+// ---------------------------------------------------------------------------
+// Calls (track record)
+// ---------------------------------------------------------------------------
+
+model Call {
+  id               Int           @id @default(autoincrement())
+  originType       String        @map("origin_type") // digest | self
+  digestSourceId   Int?          @map("digest_source_id")
+  digestSource     DigestSource? @relation("CallFromSource", fields: [digestSourceId], references: [id], onDelete: SetNull)
+  thoughtId        Int?          @map("thought_id")
+  thought          Thought?      @relation("CallFromThought", fields: [thoughtId], references: [id], onDelete: SetNull)
+  speaker          String
+  subject          String
+  direction        String
+  description      String        @db.Text
+  timeframe        String
+  dateMade         DateTime      @map("date_made")
+  outcome          String? // correct | incorrect | mixed | too-early-to-tell
+  outcomeNote      String?       @map("outcome_note") @db.Text
+  outcomeReviewedAt DateTime?    @map("outcome_reviewed_at")
+  tags             String[]     @default([])
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  @@index([speaker])
+  @@map("calls")
+}
+
+// ---------------------------------------------------------------------------
+// Insights
+// ---------------------------------------------------------------------------
+
+model Insight {
+  id              Int           @id @default(autoincrement())
+  sourceId        Int?          @map("source_id")
+  source          DigestSource? @relation("InsightFromSource", fields: [sourceId], references: [id], onDelete: SetNull)
+  text            String        @db.Text
+  note            String?       @db.Text
+  tags            String[]      @default([])
+  linkedThoughtId Int?          @map("linked_thought_id")
+  linkedThought   Thought?      @relation("InsightPromotedThought", fields: [linkedThoughtId], references: [id], onDelete: SetNull)
+  dateSaved       DateTime      @default(now()) @map("date_saved")
+
+  @@map("insights")
+}
+
+// ---------------------------------------------------------------------------
+// Todos
+// ---------------------------------------------------------------------------
+
+model Todo {
+  id        Int      @id @default(autoincrement())
+  text      String
+  type      String   @default("untagged") // action | research | decision | untagged
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("todos")
+}
