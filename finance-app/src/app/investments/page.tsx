@@ -66,6 +66,9 @@ export default function InvestmentsPage() {
   const [sortKey, setSortKey] = useState<"ticker" | "usdValue" | "plPct">("usdValue");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showAddAccount, setShowAddAccount] = useState(false);
+  const [newAccountName, setNewAccountName] = useState("");
+  const [newAccountInstitution, setNewAccountInstitution] = useState("");
   const [checking, setChecking] = useState(false);
   const [checkMsg, setCheckMsg] = useState<string | null>(null);
 
@@ -174,6 +177,20 @@ export default function InvestmentsPage() {
     await refresh();
   }
 
+  async function handleAddAccount() {
+    if (!newAccountName.trim()) return;
+    const res = await fetch("/api/accounts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newAccountName.trim(), institution: newAccountInstitution.trim() || null }),
+    });
+    if (!res.ok) return;
+    setNewAccountName("");
+    setNewAccountInstitution("");
+    setShowAddAccount(false);
+    await refresh();
+  }
+
   async function quickEdit(id: number, field: string, value: string) {
     const num = Number(value);
     if (Number.isNaN(num)) return;
@@ -220,11 +237,51 @@ export default function InvestmentsPage() {
           <a href="/api/export/holdings?format=json" className="text-xs font-medium px-3 py-1.5 rounded-md card">
             Export JSON
           </a>
+          <button onClick={() => setShowAddAccount((s) => !s)} className="text-xs font-medium px-3 py-1.5 rounded-md card">
+            {showAddAccount ? "Close" : "+ Add account"}
+          </button>
           <button onClick={() => setShowAddForm((s) => !s)} className="text-xs font-medium px-3 py-1.5 rounded-md text-white" style={{ background: "var(--series-1)" }}>
             {showAddForm ? "Close" : "+ Add holding"}
           </button>
         </div>
       </div>
+
+      {showAddAccount && (
+        <div className="card p-4 flex flex-col sm:flex-row gap-3 sm:items-end">
+          <label className="flex flex-col gap-1 flex-1">
+            <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+              Account name
+            </span>
+            <input
+              value={newAccountName}
+              onChange={(e) => setNewAccountName(e.target.value)}
+              placeholder="e.g. JP UBS"
+              className="rounded-md border px-2 py-1.5 text-sm bg-transparent"
+              style={{ borderColor: "var(--border)" }}
+            />
+          </label>
+          <label className="flex flex-col gap-1 flex-1">
+            <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+              Institution (optional)
+            </span>
+            <input
+              value={newAccountInstitution}
+              onChange={(e) => setNewAccountInstitution(e.target.value)}
+              placeholder="e.g. UBS"
+              className="rounded-md border px-2 py-1.5 text-sm bg-transparent"
+              style={{ borderColor: "var(--border)" }}
+            />
+          </label>
+          <button
+            onClick={handleAddAccount}
+            disabled={!newAccountName.trim()}
+            className="text-sm font-medium px-4 py-1.5 rounded-md text-white disabled:opacity-50"
+            style={{ background: "var(--series-1)" }}
+          >
+            Save
+          </button>
+        </div>
+      )}
 
       {showAddForm && <HoldingForm accounts={accounts} onSubmit={handleAddHolding} onCancel={() => setShowAddForm(false)} />}
 

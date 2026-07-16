@@ -7,7 +7,7 @@ import { usdValue } from "./holdings";
  * against real holdings so action items can name specific positions.
  */
 export async function getSnapshot() {
-  const [accounts, holdings, thoughts, research, todos, rules, calls, insights] = await Promise.all([
+  const [accounts, holdings, thoughts, research, todos, rules, calls, insights, digestSources] = await Promise.all([
     prisma.account.findMany({ orderBy: { name: "asc" } }),
     prisma.holding.findMany({ orderBy: { updatedAt: "desc" } }),
     prisma.thought.findMany({ orderBy: { date: "desc" }, take: 20 }),
@@ -16,6 +16,11 @@ export async function getSnapshot() {
     prisma.rule.findMany(),
     prisma.call.findMany({ orderBy: { dateMade: "desc" }, take: 20 }),
     prisma.insight.findMany({ orderBy: { dateSaved: "desc" }, take: 20 }),
+    prisma.digestSource.findMany({
+      orderBy: { dateLogged: "desc" },
+      take: 20,
+      select: { id: true, title: true, speaker: true, sourceType: true, date: true, dateLogged: true, tags: true },
+    }),
   ]);
 
   return {
@@ -43,5 +48,6 @@ export async function getSnapshot() {
     rules,
     recentCalls: calls,
     recentInsights: insights,
+    recentDigestSources: digestSources,
   };
 }

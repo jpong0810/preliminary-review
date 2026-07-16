@@ -37,6 +37,20 @@ export function createMcpServer(): McpServer {
   );
 
   server.registerTool(
+    "add_account",
+    {
+      description:
+        "Add a brokerage/holding account (e.g. 'JP UBS', 'JP IB'). Call this before add_holding if the account doesn't exist yet — " +
+        "get_snapshot lists current accounts, and add_holding will error out (listing existing accounts) rather than guess if none match.",
+      inputSchema: { name: z.string(), institution: z.string().optional() },
+    },
+    async (args) => {
+      const account = await prisma.account.create({ data: { name: args.name, institution: args.institution ?? null } });
+      return { content: [{ type: "text", text: JSON.stringify(account, null, 2) }] };
+    }
+  );
+
+  server.registerTool(
     "add_holding",
     {
       description:
