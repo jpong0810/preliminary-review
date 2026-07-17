@@ -61,7 +61,9 @@ export default function InvestmentsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [rules, setRules] = useState<{ exposureEvaluations: ExposureEvaluation[]; priceRules: PriceRule[] } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"overall" | number>("overall");
+  const [tab, setTab] = useState<"overall" | number | "combined">("overall");
+  const [combinedIds, setCombinedIds] = useState<number[]>([]);
+  const [showCombinedPicker, setShowCombinedPicker] = useState(false);
   const [filterText, setFilterText] = useState("");
   const [sortKey, setSortKey] = useState<"ticker" | "usdValue" | "plPct">("usdValue");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -88,7 +90,11 @@ export default function InvestmentsPage() {
     refresh();
   }, []);
 
-  const scoped = useMemo(() => (tab === "overall" ? holdings : holdings.filter((h) => h.accountId === tab)), [holdings, tab]);
+  const scoped = useMemo(() => {
+    if (tab === "overall") return holdings;
+    if (tab === "combined") return holdings.filter((h) => combinedIds.includes(h.accountId));
+    return holdings.filter((h) => h.accountId === tab);
+  }, [holdings, tab, combinedIds]);
   const totalUsd = useMemo(() => scoped.reduce((s, h) => s + h.usdValue, 0), [scoped]);
 
   const cashUsd = useMemo(
@@ -162,6 +168,18 @@ export default function InvestmentsPage() {
     return list;
   }, [scoped, filterText, sortKey, sortDir, accounts]);
 
+  function openCombined() {
+    if (tab !== "combined") {
+      setCombinedIds(accounts.map((a) => a.id)); // default to all accounts selected
+      setTab("combined");
+    }
+    setShowCombinedPicker((s) => !s);
+  }
+
+  function toggleCombinedAccount(id: number) {
+    setCombinedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  }
+
   function toggleSort(key: typeof sortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else {
@@ -229,6 +247,9 @@ export default function InvestmentsPage() {
               {a.name}
             </TabButton>
           ))}
+          <TabButton active={tab === "combined"} onClick={openCombined}>
+            Combined {tab === "combined" ? "▾" : ""}
+          </TabButton>
         </div>
         <div className="flex gap-2">
           <a href="/api/export/holdings?format=csv" className="text-xs font-medium px-3 py-1.5 rounded-md card">
@@ -245,6 +266,22 @@ export default function InvestmentsPage() {
           </button>
         </div>
       </div>
+
+      {tab === "combined" && showCombinedPicker && (
+        <div className="card p-4">
+          <div className="text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>
+            Choose which accounts to combine
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {accounts.map((a) => (
+              <label key={a.id} className="flex items-center gap-1.5 text-sm">
+                <input type="checkbox" checked={combinedIds.includes(a.id)} onChange={() => toggleCombinedAccount(a.id)} />
+                {a.name}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       {showAddAccount && (
         <div className="card p-4 flex flex-col sm:flex-row gap-3 sm:items-end">
@@ -288,7 +325,7 @@ export default function InvestmentsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <StatCard label="Cash" value={fmtUsd(cashUsd)} sub={totalUsd > 0 ? `${((cashUsd / totalUsd) * 100).toFixed(1)}% of view` : undefined} />
         <StatCard label="Holdings" value={String(scoped.length)} />
-        <StatCard label="Accounts" value={String(tab === "overall" ? accounts.length : 1)} />
+        <StatCard label="Accounts" value={String(tab === "overall" ? accounts.length : tab === "combined" ? combinedIds.length : 1)} />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
