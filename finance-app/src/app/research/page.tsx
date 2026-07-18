@@ -35,7 +35,7 @@ export default function ResearchListPage() {
         </span>
       </div>
       {entries.length === 0 && <div className="text-sm" style={{ color: "var(--text-muted)" }}>No research entries yet.</div>}
-      {[...entries].reverse().map((r) => (
+      {entries.map((r) => (
         <Link key={r.id} href={`/research/${r.id}`} className="card p-4 flex flex-col gap-1.5 hover:opacity-90">
           <div className="flex items-center justify-between">
             <span className="font-semibold">{r.topic}</span>

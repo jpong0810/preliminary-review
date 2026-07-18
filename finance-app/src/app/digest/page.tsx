@@ -153,7 +153,7 @@ export default function DigestPage() {
           Weekly syntheses
         </h2>
         {filteredSyntheses.length === 0 && <div className="text-sm" style={{ color: "var(--text-muted)" }}>No syntheses logged yet.</div>}
-        {[...filteredSyntheses].reverse().map((s) => (
+        {filteredSyntheses.map((s) => (
           <div key={s.id} className="card p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-sm">Week of {new Date(s.weekOf).toLocaleDateString()}</span>
@@ -210,7 +210,7 @@ export default function DigestPage() {
           Sources
         </h2>
         {filteredSources.length === 0 && <div className="text-sm" style={{ color: "var(--text-muted)" }}>No sources logged yet.</div>}
-        {[...filteredSources].reverse().map((s) => (
+        {filteredSources.map((s) => (
           <div key={s.id} id={`source-${s.id}`} className="card p-4 flex flex-col gap-2">
             <div className="flex items-center justify-between flex-wrap gap-1">
               <div>

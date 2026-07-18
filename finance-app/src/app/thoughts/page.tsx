@@ -208,7 +208,7 @@ function ThoughtsPageInner() {
 
       {view === "list" ? (
         <div className="flex flex-col gap-3">
-          {[...filtered].reverse().map((t) => (
+          {filtered.map((t) => (
             <ThoughtCard key={t.id} thought={t} holdings={holdings} highlighted={String(t.id) === highlightId} onLinkHolding={linkHolding} />
           ))}
           {filtered.length === 0 && <div className="text-sm" style={{ color: "var(--text-muted)" }}>No thoughts logged yet.</div>}
