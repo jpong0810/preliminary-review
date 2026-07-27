@@ -51,6 +51,52 @@ export function createMcpServer(): McpServer {
   );
 
   server.registerTool(
+    "delete_account",
+    {
+      description:
+        "Delete an account, e.g. to clean up an empty duplicate. Prefer accountId when known (get_snapshot lists ids) — " +
+        "matching by name alone fails with a list of candidates if more than one account shares that name, since duplicate " +
+        "names are exactly the kind of mess this tool gets used to clean up. Refuses if the account still has holdings " +
+        "unless confirmCascade is true, which deletes those holdings along with it — only pass that after the person has " +
+        "explicitly confirmed they want the holdings gone too.",
+      inputSchema: { name: z.string().optional(), accountId: z.number().optional(), confirmCascade: z.boolean().optional() },
+    },
+    async (args) => {
+      let account;
+      if (args.accountId) {
+        account = await prisma.account.findUnique({ where: { id: args.accountId }, include: { _count: { select: { holdings: true } } } });
+        if (!account) throw new Error(`No account with id ${args.accountId}.`);
+      } else if (args.name) {
+        const matches = await prisma.account.findMany({ where: { name: args.name }, include: { _count: { select: { holdings: true } } } });
+        if (matches.length === 0) throw new Error(`No account named "${args.name}" found.`);
+        if (matches.length > 1) {
+          throw new Error(
+            `Multiple accounts named "${args.name}" — specify accountId instead: ` +
+              matches.map((m) => `id ${m.id} (${m._count.holdings} holdings, ${m.institution ?? "no institution"})`).join("; ")
+          );
+        }
+        account = matches[0];
+      } else {
+        throw new Error("Provide either name or accountId.");
+      }
+      if (account._count.holdings > 0 && !args.confirmCascade) {
+        throw new Error(
+          `Account "${account.name}" (id ${account.id}) still has ${account._count.holdings} holding(s) — pass confirmCascade: true to delete it and its holdings too.`
+        );
+      }
+      await prisma.account.delete({ where: { id: account.id } });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Deleted account "${account.name}" (id ${account.id})${account._count.holdings > 0 ? ` and its ${account._count.holdings} holding(s)` : ""}.`,
+          },
+        ],
+      };
+    }
+  );
+
+  server.registerTool(
     "add_holding",
     {
       description:
