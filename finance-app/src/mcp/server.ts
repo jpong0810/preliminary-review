@@ -217,6 +217,7 @@ export function createMcpServer(): McpServer {
         sentiment: z.enum(["bullish", "bearish", "neutral"]).optional(),
         relatedHoldingIds: z.array(z.number()).optional(),
         linkedResearchId: z.number().optional(),
+        relatedTickerOverrides: z.array(z.object({ ticker: z.string(), price: z.number(), currency: z.string().optional() })).optional(),
       },
     },
     async (args) => {

@@ -1,6 +1,15 @@
 import type { Holding } from "@prisma/client";
 
-export type RelatedTicker = { ticker: string; price: number };
+export type RelatedTicker = { ticker: string; price: number; currency?: string };
+
+// Currency codes must never be treated as ticker matches. A cash holding's own "ticker"
+// is often literally a currency code (e.g. a USD cash position), so without this denylist
+// any price figure written with its currency ("96.36 USD") false-positives against that
+// cash holding instead of being left unmatched.
+const CURRENCY_CODES = new Set([
+  "USD", "EUR", "GBP", "HKD", "CHF", "JPY", "CNY", "CNH", "AUD", "CAD", "SGD", "NZD",
+  "SEK", "NOK", "DKK", "KRW", "INR", "MXN", "BRL", "ZAR", "THB", "TWD",
+]);
 
 // Small built-in keyword map for generic phrases -> a resolver against the person's
 // actual holdings. Deliberately NOT a hardcoded ticker list: it resolves dynamically
@@ -30,8 +39,9 @@ export function localMatchRelatedTickers(text: string, holdings: Holding[]): Rel
   // (a) explicit ticker match, e.g. "SMH", "$NBIS"
   const tokens = text.match(/\$?[A-Z]{1,5}\b/g) ?? [];
   for (const raw of tokens) {
-    const sym = raw.replace("$", "");
-    const hit = holdings.find((h) => h.ticker.toUpperCase() === sym.toUpperCase());
+    const sym = raw.replace("$", "").toUpperCase();
+    if (CURRENCY_CODES.has(sym)) continue;
+    const hit = holdings.find((h) => h.ticker.toUpperCase() === sym);
     if (hit && !matched.has(hit.ticker)) {
       matched.set(hit.ticker, { ticker: hit.ticker, price: hit.price });
     }
@@ -56,6 +66,7 @@ export function possibleUnheldTickers(text: string, holdings: Holding[]): string
   const out = new Set<string>();
   for (const raw of tokens) {
     const sym = raw.replace("$", "").toUpperCase();
+    if (CURRENCY_CODES.has(sym)) continue;
     if (!held.has(sym)) out.add(sym);
   }
   return Array.from(out);
