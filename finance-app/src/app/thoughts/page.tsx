@@ -55,7 +55,7 @@ function ThoughtsPageInner() {
   const [filterKeyword, setFilterKeyword] = useState("");
   const [quickText, setQuickText] = useState("");
   const [quickTags, setQuickTags] = useState("");
-  const [preview, setPreview] = useState<{ sentiment: string; tags: string[]; relatedTickers: RelatedTicker[] } | null>(null);
+  const [preview, setPreview] = useState<{ sentiment: string; tags: string[] } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -69,7 +69,7 @@ function ThoughtsPageInner() {
     refresh();
   }, []);
 
-  // Debounced live preview of tags/sentiment/related-ticker badges as the person types.
+  // Debounced live preview of tags/sentiment badges as the person types.
   useEffect(() => {
     if (!quickText.trim()) {
       setPreview(null);
@@ -175,11 +175,6 @@ function ThoughtsPageInner() {
               {preview.sentiment}
             </span>
             <TagPills tags={preview.tags} linkToTagsView={false} />
-            {preview.relatedTickers.map((rt) => (
-              <span key={rt.ticker} className="px-2 py-0.5 rounded-full" style={{ background: "var(--gridline)", color: "var(--text-secondary)" }}>
-                {rt.ticker} {fmtTickerPrice(rt)}
-              </span>
-            ))}
           </div>
         )}
       </div>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { updateThought, deleteThought } from "@/lib/thoughts";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -14,16 +15,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await req.json();
-  const data: Record<string, unknown> = {};
-  for (const field of ["text", "tags", "date", "relatedHoldingIds", "linkedResearchId", "relatedTickers", "sentiment"]) {
-    if (body[field] !== undefined) data[field] = field === "date" ? new Date(body[field]) : body[field];
-  }
-  const thought = await prisma.thought.update({ where: { id: Number(id) }, data });
+  const thought = await updateThought(Number(id), body);
   return NextResponse.json(thought);
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  await prisma.thought.delete({ where: { id: Number(id) } });
-  return NextResponse.json({ ok: true });
+  const result = await deleteThought(Number(id));
+  return NextResponse.json({ ok: true, warnings: result.warnings });
 }

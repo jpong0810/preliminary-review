@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getSnapshot } from "@/lib/snapshot";
-import { createThought, searchThoughts } from "@/lib/thoughts";
+import { createThought, updateThought, deleteThought, searchThoughts } from "@/lib/thoughts";
 import { findByTag } from "@/lib/tags";
 import { promoteInsightToThought } from "@/lib/promote";
 import { resolveAccountId, findHoldingByTickerAndAccount, resolveFxRate } from "@/lib/mcpHelpers";
@@ -207,9 +207,9 @@ export function createMcpServer(): McpServer {
     {
       description:
         "Log a dated entry in the running Thoughts journal. Text is the only required input. Sentiment is always inferred server-side " +
-        "unless you pass it. Tags are inferred only if you don't supply any. Related tickers are resolved locally against current holdings; " +
-        "if the text implies a ticker that ISN'T currently held, search for its real price yourself and pass it via relatedTickerOverrides " +
-        "rather than guessing.",
+        "unless you pass it. Tags are inferred only if you don't supply any. Related tickers have zero auto-matching — there's no " +
+        "text-scanning or holdings lookup. If the thought is about specific tickers, look up their real current price yourself and " +
+        "pass them via relatedTickerOverrides ({ticker, price, currency?}); omit it entirely for thoughts with no ticker to track.",
       inputSchema: {
         text: z.string(),
         date: z.string().optional(),
@@ -223,6 +223,48 @@ export function createMcpServer(): McpServer {
     async (args) => {
       const thought = await createThought(args);
       return { content: [{ type: "text", text: JSON.stringify(thought, null, 2) }] };
+    }
+  );
+
+  server.registerTool(
+    "update_thought",
+    {
+      description:
+        "Partially update an existing thought by id — e.g. to strip bad ticker matches or fix a typo without recreating the entry, " +
+        "which would reset its id and createdAt and destroy the 'captured at the time' anchor the whole price-at-thought design " +
+        "depends on. Only text, sentiment, tags, relatedTickers, relatedHoldingIds, and linkedResearchId can be changed — the " +
+        "original date and createdAt are permanently frozen and aren't accepted here at all, even to overwrite them. " +
+        "relatedTickers is fully explicit, same as add_thought's relatedTickerOverrides — no re-matching against text or holdings.",
+      inputSchema: {
+        id: z.number(),
+        text: z.string().optional(),
+        sentiment: z.enum(["bullish", "bearish", "neutral"]).optional(),
+        tags: z.array(z.string()).optional(),
+        relatedTickers: z.array(z.object({ ticker: z.string(), price: z.number(), currency: z.string().optional() })).optional(),
+        relatedHoldingIds: z.array(z.number()).optional(),
+        linkedResearchId: z.number().nullable().optional(),
+      },
+    },
+    async (args) => {
+      const { id, ...rest } = args;
+      const thought = await updateThought(id, rest);
+      return { content: [{ type: "text", text: JSON.stringify(thought, null, 2) }] };
+    }
+  );
+
+  server.registerTool(
+    "delete_thought",
+    {
+      description:
+        "Delete a thought by id. Hard delete. If any calls, seeded research entries, or promoted insights reference this thought, " +
+        "they aren't deleted but do lose that link — the response says which, if any, so you can flag it rather than silently " +
+        "orphaning them.",
+      inputSchema: { id: z.number() },
+    },
+    async (args) => {
+      const result = await deleteThought(args.id);
+      const note = result.warnings.length ? ` Note: ${result.warnings.join(" ")}` : "";
+      return { content: [{ type: "text", text: `Deleted thought ${args.id}.${note}` }] };
     }
   );
 

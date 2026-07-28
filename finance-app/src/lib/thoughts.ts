@@ -10,22 +10,17 @@ export type CreateThoughtInput = {
   relatedHoldingIds?: number[];
   linkedResearchId?: number | null;
   sentiment?: Sentiment; // caller (Claude, in-conversation) may already know this; overrides inference when given
-  // Explicit ticker/price data for stocks the text implies but that aren't currently held,
-  // so auto-matching (which only resolves against held tickers) doesn't leave them out.
-  // Takes priority over an auto-match of the same ticker.
+  // The only source of relatedTickers — explicit ticker/price data for whatever the thought
+  // is actually about. No auto-matching against text or holdings; thoughts have zero
+  // correlation to holdings by design.
   relatedTickerOverrides?: RelatedTicker[];
 };
 
 /** Shared by the web API and the MCP `add_thought` tool so inference behavior stays identical either way. */
 export async function createThought(input: CreateThoughtInput) {
-  const holdings = await prisma.holding.findMany();
   const providedTags = input.tags ?? [];
-  const inferred = await inferThoughtMeta(input.text, holdings, providedTags);
-
-  const mergedTickers = new Map<string, RelatedTicker>();
-  for (const t of inferred.relatedTickers) mergedTickers.set(t.ticker.toUpperCase(), t);
-  for (const t of input.relatedTickerOverrides ?? []) mergedTickers.set(t.ticker.toUpperCase(), t);
-  const relatedTickers = Array.from(mergedTickers.values());
+  const inferred = await inferThoughtMeta(input.text, providedTags);
+  const relatedTickers = input.relatedTickerOverrides ?? [];
 
   return prisma.thought.create({
     data: {
@@ -38,6 +33,67 @@ export async function createThought(input: CreateThoughtInput) {
       linkedResearchId: input.linkedResearchId ?? null,
     },
   });
+}
+
+export type UpdateThoughtInput = {
+  text?: string;
+  sentiment?: Sentiment;
+  tags?: string[];
+  relatedTickers?: RelatedTicker[];
+  relatedHoldingIds?: number[];
+  linkedResearchId?: number | null;
+};
+
+/**
+ * Partial update, matched by id — e.g. to correct bad ticker matches without recreating
+ * the entry (which would reset id/createdAt and corrupt the "captured at the time" record
+ * the whole price-at-thought design depends on). date and createdAt are never accepted
+ * here — there's no field in UpdateThoughtInput for either, so there's nothing to strip;
+ * `updatedAt` (Prisma @updatedAt) records that an edit happened without disturbing them.
+ * relatedTickers is fully explicit, same as createThought's relatedTickerOverrides — no
+ * re-matching against text or holdings on update either.
+ */
+export async function updateThought(id: number, input: UpdateThoughtInput) {
+  const data: Record<string, unknown> = {};
+  if (input.text !== undefined) data.text = input.text;
+  if (input.sentiment !== undefined) data.sentiment = input.sentiment;
+  if (input.tags !== undefined) data.tags = input.tags;
+  if (input.relatedTickers !== undefined) data.relatedTickers = input.relatedTickers.length ? input.relatedTickers : null;
+  if (input.relatedHoldingIds !== undefined) data.relatedHoldingIds = input.relatedHoldingIds;
+  if (input.linkedResearchId !== undefined) data.linkedResearchId = input.linkedResearchId;
+  return prisma.thought.update({ where: { id }, data });
+}
+
+export type DeleteThoughtResult = { deletedId: number; warnings: string[] };
+
+/**
+ * Hard delete, matched by id. Calls/research/insights that reference this thought aren't
+ * deleted (their FK just goes null, per the schema's onDelete: SetNull) but they do lose
+ * that link — this returns a warning per dependent kind so the caller can flag it rather
+ * than silently orphaning them.
+ */
+export async function deleteThought(id: number): Promise<DeleteThoughtResult> {
+  const thought = await prisma.thought.findUnique({
+    where: { id },
+    include: { calls: true, seededResearch: true, insightsFrom: true },
+  });
+  if (!thought) throw new Error(`No thought with id ${id}.`);
+
+  const warnings: string[] = [];
+  if (thought.calls.length) {
+    warnings.push(`${thought.calls.length} call(s) linked to this thought will lose that link (not deleted).`);
+  }
+  if (thought.seededResearch.length) {
+    warnings.push(
+      `${thought.seededResearch.length} research entr${thought.seededResearch.length === 1 ? "y" : "ies"} seeded from this thought will lose that link.`
+    );
+  }
+  if (thought.insightsFrom.length) {
+    warnings.push(`${thought.insightsFrom.length} insight(s) promoted from this thought will lose that link.`);
+  }
+
+  await prisma.thought.delete({ where: { id } });
+  return { deletedId: id, warnings };
 }
 
 export type SearchThoughtsInput = {

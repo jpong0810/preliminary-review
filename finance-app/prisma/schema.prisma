@@ -113,6 +113,7 @@ model Thought {
   calls          Call[]     @relation("CallFromThought")
 
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@index([date])
   @@map("thoughts")
