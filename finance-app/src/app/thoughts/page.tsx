@@ -2,12 +2,25 @@
 
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import clsx from "clsx";
 import { TagPills } from "@/components/TagPills";
-import { sentimentColor } from "@/components/SentimentDot";
+import { sentimentColor, SentimentDot } from "@/components/SentimentDot";
 import { LineageThread } from "@/components/LineageThread";
 
-type RelatedTicker = { ticker: string; price: number };
+type RelatedTicker = { ticker: string; price: number; currency?: string };
+
+function fmtTickerPrice(rt: RelatedTicker): string {
+  return rt.currency && rt.currency !== "USD" ? `${rt.price} ${rt.currency}` : `$${rt.price}`;
+}
+
+// Heuristic split at the first sentence boundary: a short one-liner stays whole (no
+// commentary shown), while a longer entry gets its first sentence as the bold headline
+// and everything after as de-emphasized supporting commentary (e.g. price/rationale
+// detail). No new data field — this is purely a render-time split of the one `text` field.
+function splitThoughtText(text: string): { headline: string; commentary: string | null } {
+  const idx = text.indexOf(". ");
+  if (idx === -1 || idx > text.length - 3) return { headline: text, commentary: null };
+  return { headline: text.slice(0, idx + 1), commentary: text.slice(idx + 2).trim() || null };
+}
 type Thought = {
   id: number;
   date: string;
@@ -164,7 +177,7 @@ function ThoughtsPageInner() {
             <TagPills tags={preview.tags} linkToTagsView={false} />
             {preview.relatedTickers.map((rt) => (
               <span key={rt.ticker} className="px-2 py-0.5 rounded-full" style={{ background: "var(--gridline)", color: "var(--text-secondary)" }}>
-                {rt.ticker} ${rt.price}
+                {rt.ticker} {fmtTickerPrice(rt)}
               </span>
             ))}
           </div>
@@ -232,7 +245,7 @@ function ThoughtsPageInner() {
                         <div className="mt-1 flex flex-wrap gap-1">
                           {t.relatedTickers.map((rt) => (
                             <span key={rt.ticker} className="px-1.5 py-0.5 rounded-full" style={{ background: "var(--gridline)" }}>
-                              {rt.ticker} ${rt.price}
+                              {rt.ticker} {fmtTickerPrice(rt)}
                             </span>
                           ))}
                         </div>
@@ -250,6 +263,50 @@ function ThoughtsPageInner() {
   );
 }
 
+type PriceState = number | "loading" | "error" | undefined;
+
+/** Shows the "at thought" price, and turns into a click-to-refresh current-price + delta
+    once fetched — on demand only, never persisted, so it can't go stale between loads. */
+function PriceDelta({ ticker, currency, atThought }: { ticker: string; currency?: string; atThought: number }) {
+  const [current, setCurrent] = useState<PriceState>(undefined);
+
+  async function refresh() {
+    setCurrent("loading");
+    try {
+      const params = new URLSearchParams({ ticker, ...(currency ? { currency } : {}) });
+      const res = await fetch(`/api/thoughts/price?${params}`);
+      const data = await res.json();
+      setCurrent(res.ok ? data.price : "error");
+    } catch {
+      setCurrent("error");
+    }
+  }
+
+  if (current === undefined) {
+    return (
+      <button onClick={refresh} className="text-xs underline" style={{ color: "var(--text-muted)" }}>
+        check now
+      </button>
+    );
+  }
+  if (current === "loading") return <span className="text-xs" style={{ color: "var(--text-muted)" }}>checking…</span>;
+  if (current === "error") {
+    return (
+      <button onClick={refresh} className="text-xs underline" style={{ color: "var(--text-muted)" }}>
+        retry
+      </button>
+    );
+  }
+  const delta = (current - atThought) / atThought;
+  const color = delta > 0 ? "var(--sentiment-bullish)" : delta < 0 ? "var(--sentiment-bearish)" : "var(--text-muted)";
+  return (
+    <button onClick={refresh} className="text-xs font-medium hover:opacity-70" style={{ color }} title="Click to refresh">
+      {fmtTickerPrice({ ticker, price: current, currency })} ({delta >= 0 ? "+" : ""}
+      {(delta * 100).toFixed(1)}%)
+    </button>
+  );
+}
+
 function ThoughtCard({
   thought,
   holdings,
@@ -261,28 +318,78 @@ function ThoughtCard({
   highlighted: boolean;
   onLinkHolding: (thoughtId: number, holdingId: number) => void;
 }) {
+  const tickers = thought.relatedTickers ?? [];
+  const isMulti = tickers.length > 1;
+  const [expanded, setExpanded] = useState(false);
+  const { headline, commentary } = splitThoughtText(thought.text);
+
   return (
     <div
       id={`thought-${thought.id}`}
-      className={clsx("card p-4 border-l-4")}
-      style={{ borderLeftColor: sentimentColor(thought.sentiment), outline: highlighted ? "2px solid var(--series-1)" : undefined }}
+      className="card p-4"
+      style={{ outline: highlighted ? "2px solid var(--series-1)" : undefined }}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-          {new Date(thought.date).toLocaleDateString()}
-        </span>
-        <TagPills tags={thought.tags} />
-      </div>
-      <p className="text-sm mt-1.5">{thought.text}</p>
-      {thought.relatedTickers && thought.relatedTickers.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {thought.relatedTickers.map((rt) => (
-            <span key={rt.ticker} className="text-xs px-2 py-0.5 rounded-full" style={{ background: "var(--gridline)", color: "var(--text-secondary)" }}>
-              {rt.ticker} ${rt.price}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <SentimentDot sentiment={thought.sentiment} />
+          {tickers.map((rt) => (
+            <span key={rt.ticker} className="text-xs font-semibold px-1.5 py-0.5 rounded" style={{ background: "var(--gridline)", fontFamily: "var(--font-mono, monospace)" }}>
+              {rt.ticker}
             </span>
           ))}
         </div>
+
+        {tickers.length > 0 && (
+          <div className="text-right shrink-0">
+            {!isMulti ? (
+              <>
+                <div className="text-sm font-semibold">
+                  {fmtTickerPrice(tickers[0])} <span className="text-xs font-normal" style={{ color: "var(--text-muted)" }}>at thought</span>
+                </div>
+                <div className="mt-0.5">
+                  <PriceDelta ticker={tickers[0].ticker} currency={tickers[0].currency} atThought={tickers[0].price} />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  {tickers.map((rt) => fmtTickerPrice(rt)).join(" · ")}
+                </div>
+                <button onClick={() => setExpanded((e) => !e)} className="text-xs underline mt-0.5" style={{ color: "var(--series-1)" }}>
+                  {expanded ? "hide current prices" : "compare current prices"}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {isMulti && expanded && (
+        <div className="mt-2 flex flex-col gap-1.5 rounded-md p-2.5" style={{ background: "var(--gridline)" }}>
+          {tickers.map((rt) => (
+            <div key={rt.ticker} className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-semibold" style={{ fontFamily: "var(--font-mono, monospace)" }}>{rt.ticker}</span>
+              <span style={{ color: "var(--text-muted)" }}>{fmtTickerPrice(rt)} at thought</span>
+              <PriceDelta ticker={rt.ticker} currency={rt.currency} atThought={rt.price} />
+            </div>
+          ))}
+        </div>
       )}
+
+      <p className="text-base font-semibold mt-3 leading-snug">{headline}</p>
+      {commentary && (
+        <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
+          {commentary}
+        </p>
+      )}
+
+      <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
+        <TagPills tags={thought.tags} />
+        <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>
+          {new Date(thought.date).toLocaleDateString()}
+        </span>
+      </div>
+
       <div className="mt-3 flex items-center justify-between">
         <LineageThread type="thought" id={thought.id} />
         <select

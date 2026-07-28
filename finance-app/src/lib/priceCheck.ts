@@ -83,3 +83,41 @@ export async function refreshFxRate(holding: Holding): Promise<FxRefreshResult |
   const rate = await lookupFxRate(holding.currency);
   return rate != null ? { holdingId: holding.id, fxRateToUsd: rate } : null;
 }
+
+/**
+ * On-demand current price for a ticker, e.g. to compare against a Thought's priceAtThought.
+ * Deliberately not persisted/scheduled — called fresh each time the person asks, same
+ * "on request, never live" category as the other lookups in this file.
+ */
+export async function lookupCurrentPrice(ticker: string, currency?: string): Promise<number | null> {
+  const anthropic = client();
+  if (!anthropic) return null;
+
+  try {
+    const msg = await anthropic.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 200,
+      tools: [{ type: "web_search_20260209", name: "web_search" } as unknown as Anthropic.Tool],
+      messages: [
+        {
+          role: "user",
+          content:
+            `Find the current market price for ticker ${ticker}` +
+            (currency ? `, quoted in ${currency} (the same currency a prior price for this ticker was recorded in, so the two are directly comparable)` : "") +
+            `. Return ONLY compact JSON: {"price": number}.`,
+        },
+      ],
+    });
+    const textBlock = msg.content.find((b) => b.type === "text");
+    if (textBlock && textBlock.type === "text") {
+      const match = textBlock.text.match(/\{[\s\S]*\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        if (typeof parsed.price === "number" && parsed.price > 0) return parsed.price;
+      }
+    }
+  } catch {
+    // leave unresolved rather than guessing
+  }
+  return null;
+}
