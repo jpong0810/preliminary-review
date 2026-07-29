@@ -63,7 +63,7 @@ export default function InvestmentsPage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"overall" | number>("overall");
   const [filterText, setFilterText] = useState("");
-  const [sortKey, setSortKey] = useState<"ticker" | "usdValue" | "plPct">("usdValue");
+  const [sortKey, setSortKey] = useState<"ticker" | "geography" | "usdValue" | "plPct">("usdValue");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showAddForm, setShowAddForm] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -152,6 +152,7 @@ export default function InvestmentsPage() {
     list = [...list].sort((a, b) => {
       let cmp = 0;
       if (sortKey === "ticker") cmp = a.ticker.localeCompare(b.ticker);
+      else if (sortKey === "geography") cmp = a.geography.localeCompare(b.geography);
       else if (sortKey === "usdValue") cmp = a.usdValue - b.usdValue;
       else cmp = (a.plPct ?? -Infinity) - (b.plPct ?? -Infinity);
       return sortDir === "asc" ? cmp : -cmp;
@@ -328,6 +329,7 @@ export default function InvestmentsPage() {
                 <th className="py-2 px-2">Name</th>
                 <th className="py-2 px-2">Account</th>
                 <th className="py-2 px-2">Sector</th>
+                <Th onClick={() => toggleSort("geography")}>Geography</Th>
                 <th className="py-2 px-2">Tags</th>
                 <th className="py-2 px-2 text-right">Qty</th>
                 <th className="py-2 px-2 text-right">Price</th>
@@ -353,6 +355,9 @@ export default function InvestmentsPage() {
                   </td>
                   <td className="py-2 px-2" style={{ color: "var(--text-secondary)" }}>
                     {h.sector}
+                  </td>
+                  <td className="py-2 px-2" style={{ color: "var(--text-secondary)" }}>
+                    {h.geography}
                   </td>
                   <td className="py-2 px-2">
                     <TagPills tags={h.tags} />
