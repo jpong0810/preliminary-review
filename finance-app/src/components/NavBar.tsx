@@ -6,6 +6,7 @@ import clsx from "clsx";
 
 const LINKS = [
   { href: "/investments", label: "Investments" },
+  { href: "/rules", label: "Rules" },
   { href: "/thoughts", label: "Thoughts" },
   { href: "/research", label: "Research" },
   { href: "/digest", label: "Digest" },
